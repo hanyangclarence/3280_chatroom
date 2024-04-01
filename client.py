@@ -32,30 +32,48 @@ class AudioChatClient:
         return record_stream, play_stream
 
     async def record_and_send(self, websocket, stream):
-        counter = 1
-        while True:
-            print(f'Send: {counter}')
-            counter += 1
-            data = stream.read(self.chunk_size)
-            # Process and possibly compress your audio data here
-            # await websocket.send(data)
-            await websocket.send(data)
-            await asyncio.sleep(0)
+        try:
+            counter = 1
+            while True:
+                print(f'Send: {counter}')
+                counter += 1
+                data = stream.read(self.chunk_size)
+                # Process and possibly compress your audio data here
+                # await websocket.send(data)
+                await websocket.send(data)
+                await asyncio.sleep(0)
+        except websockets.exceptions.ConnectionClosedError as e:
+            print(f"Connection closed during record and send process: {e}")
 
     async def receive_and_play(self, websocket, stream):
-        while True:
-            print(f'Receive: {self.count}')
-            self.count += 1
-            # Decompress your audio data here if necessary
-            message = await websocket.recv()
-            stream.write(message)
+        try:
+            while True:
+                print(f'Receive: {self.count}')
+                self.count += 1
+                # Decompress your audio data here if necessary
+                message = await websocket.recv()
+                stream.write(message)
+        except websockets.exceptions.ConnectionClosedError as e:
+            print(f"Connection closed during receive and play process: {e}")
 
     async def run(self):
-        async with websockets.connect(self.uri) as websocket:
-            record_stream, play_stream = self.open_stream()
-            send_task = asyncio.create_task(self.record_and_send(websocket, record_stream))
-            receive_task = asyncio.create_task(self.receive_and_play(websocket, play_stream))
-            await asyncio.gather(send_task, receive_task)
+        record_stream, play_stream = None, None
+        try:
+            async with websockets.connect(self.uri) as websocket:
+                record_stream, play_stream = self.open_stream()
+                send_task = asyncio.create_task(self.record_and_send(websocket, record_stream))
+                receive_task = asyncio.create_task(self.receive_and_play(websocket, play_stream))
+                await asyncio.gather(send_task, receive_task)
+        except websockets.exceptions.ConnectionClosedError as e:
+            print(f"Connection closed: {e}")
+        finally:
+            if record_stream:
+                record_stream.stop_stream()
+                record_stream.close()
+            if play_stream:
+                play_stream.stop_stream()
+                play_stream.close()
+            self.pyaudio_instance.terminate()
 
 
 if __name__ == "__main__":
