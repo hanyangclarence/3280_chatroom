@@ -14,16 +14,22 @@ class AudioChatClient:
         self.pyaudio_instance = pyaudio.PyAudio()
         self.count = 0
 
-    def open_stream(self, record=True, play=True):
-        stream = self.pyaudio_instance.open(
+    def open_stream(self):
+        record_stream = self.pyaudio_instance.open(
             format=self.audio_format,
             channels=self.channels,
             rate=self.rate,
-            input=record,
-            output=play,
+            input=True,
             frames_per_buffer=self.chunk_size
         )
-        return stream
+        play_stream = self.pyaudio_instance.open(
+            format=self.audio_format,
+            channels=self.channels,
+            rate=self.rate,
+            output=True,
+            frames_per_buffer=self.chunk_size
+        )
+        return record_stream, play_stream
 
     async def record_and_send(self, websocket, stream):
         counter = 1
@@ -46,9 +52,9 @@ class AudioChatClient:
 
     async def run(self):
         async with websockets.connect(self.uri) as websocket:
-            stream = self.open_stream()
-            send_task = asyncio.create_task(self.record_and_send(websocket, stream))
-            receive_task = asyncio.create_task(self.receive_and_play(websocket, stream))
+            record_stream, play_stream = self.open_stream()
+            send_task = asyncio.create_task(self.record_and_send(websocket, record_stream))
+            receive_task = asyncio.create_task(self.receive_and_play(websocket, play_stream))
             await asyncio.gather(send_task, receive_task)
 
 
