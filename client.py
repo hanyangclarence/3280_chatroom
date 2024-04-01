@@ -60,6 +60,6 @@ class AudioChatClient:
 
 if __name__ == "__main__":
     # uri = "ws://10.13.25.124:5678"
-    uri = "ws://localhost:5678"
+    uri = "ws://10.13.245.139:5678"
     client = AudioChatClient(uri)
     asyncio.run(client.run())

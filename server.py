@@ -35,4 +35,4 @@ class ChatServer:
 if __name__ == "__main__":
     server = ChatServer()
     # asyncio.run(server.run("10.13.25.124", 5678))
-    asyncio.run(server.run("localhost", 5678))
+    asyncio.run(server.run("10.13.245.139", 5678))
