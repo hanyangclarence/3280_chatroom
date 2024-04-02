@@ -4,14 +4,16 @@ import pyaudio
 import tkinter as tk
 from tkinter import simpledialog
 from threading import Thread
+from config import config
+
 
 class AudioChatClientGUI:
-    def __init__(self, uri):
+    def __init__(self, uri, config):
         self.uri = uri
         self.audio_format = pyaudio.paInt16
-        self.channels = 1
-        self.rate = 16000
-        self.chunk_size = 1024
+        self.channels = config["channel"]
+        self.rate = config["rate"]
+        self.chunk_size = config["chunk_size"]
         self.pyaudio_instance = pyaudio.PyAudio()
         self.count = 0
         self.root = tk.Tk()
@@ -60,13 +62,8 @@ class AudioChatClientGUI:
             while True:
                 print(f'Send: {counter}')
                 counter += 1
-                try:
-                    data = stream.read(self.chunk_size, exception_on_overflow=False)
-                    await websocket.send(data)
-                except IOError as e:
-                    if e.errno == pyaudio.paInputOverflowed:
-                        print("Input overflow, dropping frame.")
-                        continue
+                data = stream.read(self.chunk_size, exception_on_overflow=False)
+                await websocket.send(data)
                 await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
@@ -104,7 +101,8 @@ class AudioChatClientGUI:
     def start_gui(self):
         self.root.mainloop()
 
+
 if __name__ == "__main__":
-    uri = "ws://10.13.181.168:5678"
-    client = AudioChatClientGUI(uri)
+    uri = f"ws://{config['ip']}:{config['port']}"
+    client = AudioChatClientGUI(uri, config=config)
     client.start_gui()
