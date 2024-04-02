@@ -1,25 +1,32 @@
 import asyncio
 import websockets
 
-
 class ChatServer:
     def __init__(self):
-        self.connected_clients = set()
+        self.rooms = {}  # Maps room names to sets of websockets.
         self.count = 0
-
+        
     async def handler(self, websocket):
-        self.connected_clients.add(websocket)
-        print(f"New client connected. Total clients: {len(self.connected_clients)}")
+        room_name = await websocket.recv()  # First message is the room name
+        if room_name not in self.rooms:
+            self.rooms[room_name] = set()
+        self.rooms[room_name].add(websocket)
+        print(f"New client connected to {room_name}. Total clients in room: {len(self.rooms[room_name])}")
         try:
             while True:
                 message = await websocket.recv()
-                await self.broadcast(message, websocket)
+                await self.broadcast(message, websocket, room_name)
         finally:
-            self.connected_clients.remove(websocket)
-            print(f"Client disconnected. Total clients: {len(self.connected_clients)}")
+            self.rooms[room_name].remove(websocket)
+            if not self.rooms[room_name]:  # If the room is empty, remove it
+                del self.rooms[room_name]
+                print(f"Room {room_name} deleted as the last client disconnected.")
+            else:
+                print(f"Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
 
-    async def broadcast(self, message, sender):
-        for client in self.connected_clients:
+
+    async def broadcast(self, message, sender, room_name):
+        for client in self.rooms[room_name]:
             if client != sender:
                 self.count += 1
                 print(self.count)
@@ -31,8 +38,6 @@ class ChatServer:
             print(f"Server started at ws://{host}:{port}")
             await asyncio.Future()  # run forever
 
-
 if __name__ == "__main__":
     server = ChatServer()
-    # asyncio.run(server.run("10.13.25.124", 5678))
-    asyncio.run(server.run("localhost", 5678))
+    asyncio.run(server.run("10.13.181.168", 5678))
