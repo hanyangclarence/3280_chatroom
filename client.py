@@ -1,10 +1,11 @@
 import asyncio
 import websockets
 import pyaudio
-import numpy as np
+import tkinter as tk
+from tkinter import simpledialog
+from threading import Thread
 
-
-class AudioChatClient:
+class AudioChatClientGUI:
     def __init__(self, uri):
         self.uri = uri
         self.audio_format = pyaudio.paInt16
@@ -13,6 +14,28 @@ class AudioChatClient:
         self.chunk_size = 256
         self.pyaudio_instance = pyaudio.PyAudio()
         self.count = 0
+        self.root = tk.Tk()
+        self.root.title("Audio Chat Client")
+
+        # Setup GUI
+        self.setup_gui()
+
+    def setup_gui(self):
+        self.status_label = tk.Label(self.root, text="Disconnected", fg="red")
+        self.status_label.pack(pady=10)
+
+        self.connect_button = tk.Button(self.root, text="Connect to Chat Room", command=self.connect_to_room)
+        self.connect_button.pack(pady=10)
+
+    def connect_to_room(self):
+        self.chat_room = simpledialog.askstring("Input", "Enter the chat room name:", parent=self.root)
+        if self.chat_room:
+            self.status_label.config(text="Connected to " + self.chat_room, fg="green")
+            # Start the client in a non-blocking manner
+            Thread(target=self.run_client, daemon=True).start()
+
+    def run_client(self):
+        asyncio.run(self.run())
 
     def open_stream(self):
         record_stream = self.pyaudio_instance.open(
@@ -37,9 +60,7 @@ class AudioChatClient:
             while True:
                 print(f'Send: {counter}')
                 counter += 1
-                data = stream.read(self.chunk_size)
-                # Process and possibly compress your audio data here
-                # await websocket.send(data)
+                data = stream.read(self.chunk_size, exception_on_overflow=False)
                 await websocket.send(data)
                 await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
@@ -50,7 +71,6 @@ class AudioChatClient:
             while True:
                 print(f'Receive: {self.count}')
                 self.count += 1
-                # Decompress your audio data here if necessary
                 message = await websocket.recv()
                 stream.write(message)
         except websockets.exceptions.ConnectionClosedError as e:
@@ -60,6 +80,7 @@ class AudioChatClient:
         record_stream, play_stream = None, None
         try:
             async with websockets.connect(self.uri) as websocket:
+                await websocket.send(self.chat_room)  # Use the GUI-input chat room name
                 record_stream, play_stream = self.open_stream()
                 send_task = asyncio.create_task(self.record_and_send(websocket, record_stream))
                 receive_task = asyncio.create_task(self.receive_and_play(websocket, play_stream))
@@ -75,9 +96,10 @@ class AudioChatClient:
                 play_stream.close()
             self.pyaudio_instance.terminate()
 
+    def start_gui(self):
+        self.root.mainloop()
 
 if __name__ == "__main__":
-    # uri = "ws://10.13.25.124:5678"
-    uri = "ws://localhost:5678"
-    client = AudioChatClient(uri)
-    asyncio.run(client.run())
+    uri = "ws://10.13.181.168:5678"
+    client = AudioChatClientGUI(uri)
+    client.start_gui()
