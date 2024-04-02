@@ -5,7 +5,6 @@ import websockets
 class ChatServer:
     def __init__(self):
         self.connected_clients = set()
-        self.count = 0
 
     async def handler(self, websocket):
         self.connected_clients.add(websocket)
@@ -14,6 +13,10 @@ class ChatServer:
             while True:
                 message = await websocket.recv()
                 await self.broadcast(message, websocket)
+                print(f'{websocket.remote_address}', end=' ')
+                for client in self.connected_clients:
+                    print(f'{client.remote_address}', end=' ')
+                print()
         finally:
             self.connected_clients.remove(websocket)
             print(f"Client disconnected. Total clients: {len(self.connected_clients)}")
@@ -21,8 +24,6 @@ class ChatServer:
     async def broadcast(self, message, sender):
         for client in self.connected_clients:
             if client != sender:
-                self.count += 1
-                print(self.count)
                 await client.send(message)
                 await asyncio.sleep(0)
 
