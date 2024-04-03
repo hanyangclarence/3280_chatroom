@@ -1,5 +1,5 @@
 config = {
-    "ip": "localhost",
+    "ip": "10.13.62.241",
     "port": 5678,
 
     "channel": 1,

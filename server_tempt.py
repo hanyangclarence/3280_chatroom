@@ -108,4 +108,4 @@ class ChatServer:
 
 if __name__ == "__main__":
     server = ChatServer(config)
-    asyncio.run(server.run("localhost", 5678))
+    asyncio.run(server.run(config['ip'], config['port']))
