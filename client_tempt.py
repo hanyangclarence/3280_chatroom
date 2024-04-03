@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import simpledialog
 from threading import Thread
 from config import config
+import time
 
 
 class AudioChatClientGUI:
@@ -60,10 +61,13 @@ class AudioChatClientGUI:
         try:
             counter = 1
             while True:
-                print(f'Send: {counter}')
                 counter += 1
+                before_read_time = time.time()
                 data = stream.read(self.chunk_size, exception_on_overflow=False)
+                after_read_time = time.time()
                 await websocket.send(data)
+                after_send_time = time.time()
+                print(f'data: {data[:6]}, read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
                 await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
@@ -71,10 +75,13 @@ class AudioChatClientGUI:
     async def receive_and_play(self, websocket, stream):
         try:
             while True:
-                print(f'Receive: {self.count}')
                 self.count += 1
+                before_receive_time = time.time()
                 message = await websocket.recv()
+                after_receive_time = time.time()
                 stream.write(message)
+                after_play_time = time.time()
+                print(f'Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
 

@@ -4,6 +4,7 @@ from config import config
 import sys
 from typing import List, Dict
 import numpy as np
+import time
 
 
 class ChatServer:
@@ -30,8 +31,12 @@ class ChatServer:
 
         try:
             while True:
+                before_receive_time = time.time()
                 audio_chunk = await websocket.recv()
+                after_receive_time = time.time()
                 await self.audio_buffers[room_name][websocket].put(audio_chunk)
+                print(f'{websocket.remote_address}, {audio_chunk[:6]}: before receive: {before_receive_time}, after receive: {after_receive_time}', file=sys.stderr)
+                # await asyncio.sleep(0)
         finally:
             self.rooms[room_name].remove(websocket)
             del self.audio_buffers[room_name][websocket]
@@ -47,18 +52,22 @@ class ChatServer:
     async def mix_and_broadcast(self, room_name):
         while True:
             try:
+                print(f'Before sleep: {time.time()}', file=sys.stderr)
                 # clear the queue in the room every chunk duration
                 await asyncio.sleep(self.buffer_duration)
                 audio_chunks = {}
 
+                print(f'After sleep, Before cleaning: {time.time()}', file=sys.stderr)
                 for client, buffer in self.audio_buffers[room_name].items():
                     audio_chunks[client] = []
                     while not buffer.empty():
                         audio_chunks[client].append(await buffer.get())
 
+                print(f'After cleaning: {time.time()}', file=sys.stderr)
+
                 # DEBUG: print the number of chunks received from each client
                 message = ', '.join(f'{client.remote_address}:{len(chunks)}' for client, chunks in audio_chunks.items())
-                print(f"Before, Room {room_name}: {message}", file=sys.stderr)
+                print(f"Before padding, {message}, {time.time()}", file=sys.stderr)
 
                 # the number of chunks received from each client could be different
                 # we need to pad the shorter chunks with silence to self.max_buffer_size
@@ -72,7 +81,7 @@ class ChatServer:
 
                 # DEBUG: print the number of chunks after padding and truncating
                 message = ', '.join(f'{client.remote_address}:{len(chunks)}' for client, chunks in audio_chunks.items())
-                print(f"After, Room {room_name}: {message}", file=sys.stderr)
+                print(f"After padding, {message}, {time.time()}", file=sys.stderr)
 
                 # broadcast the audio chunks to all clients in the room
                 for client in self.rooms[room_name]:
@@ -87,7 +96,7 @@ class ChatServer:
                     print(f"Mixed chunk shape: {len(mixed_chunk)}", file=sys.stderr)
 
                     await client.send(mixed_chunk)
-                    await asyncio.sleep(0)
+                print(f'After broadcast: {time.time()}', file=sys.stderr)
             except Exception as e:
                 print(f'error found: {e}', file=sys.stderr)
 
