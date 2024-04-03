@@ -7,4 +7,6 @@ config = {
     "chunk_size": 1024,
 
     "max_buffer_size": 8,
+
+    "amplification_factor": 5,
 }

@@ -85,11 +85,18 @@ class ChatServer:
         # joint the bytes in the list
         audio_chunks: List[bytes] = [b''.join(chunks) for chunks in audio_chunks]
 
-        # average the byte data
+        # mix the byte data
         arrays: List[np.ndarray] = [np.frombuffer(chunk, dtype=np.int16) for chunk in audio_chunks]
-        mixed_chunk = np.mean(arrays, axis=0).astype(np.int16)
-
-        print(np.max(mixed_chunk), np.min(mixed_chunk), np.mean(mixed_chunk), np.std(mixed_chunk), file=sys.stderr)
+        # convert to int32 to avoid overflow
+        arrays = [arr.astype(np.int32) for arr in arrays]
+        # mix the data by summing them
+        mixed_chunk = np.sum(arrays, axis=0)
+        # amplify the mixed data
+        mixed_chunk = mixed_chunk * config["amplification_factor"]
+        # clip the mixed data
+        mixed_chunk = np.clip(mixed_chunk, -32768, 32767)
+        # convert the mixed data back to int16
+        mixed_chunk = mixed_chunk.astype(np.int16)
 
         return mixed_chunk.tobytes()
 
