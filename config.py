@@ -3,8 +3,8 @@ config = {
     "port": 5678,
 
     "channel": 1,
-    "rate": 16000,
-    "chunk_size": 256,
+    "rate": 44100,
+    "chunk_size": 1024,
 
-    "buffer_duration": 1.,  # 100ms
+    "max_buffer_size": 8,
 }

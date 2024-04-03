@@ -13,9 +13,8 @@ class ChatServer:
         self.audio_buffers = {}  # Maps room names to dict of user_id to audio chunks, Dict[room name, Dict[socket, bytes]
         self.mixing_tasks = {}  # Maps room names to asyncio tasks
 
-        # compute the max number of chunks to store in the buffer
-        self.buffer_duration = config["buffer_duration"]
-        self.max_buffer_size = int(config["rate"] / config["chunk_size"] * self.buffer_duration)
+        self.max_buffer_size = config["max_buffer_size"]
+        self.buffer_duration = config["chunk_size"] / config["rate"] * self.max_buffer_size
 
     async def handler(self, websocket):
         room_name = await websocket.recv()  # First message is the room name
@@ -31,12 +30,8 @@ class ChatServer:
 
         try:
             while True:
-                before_receive_time = time.time()
                 audio_chunk = await websocket.recv()
-                after_receive_time = time.time()
                 await self.audio_buffers[room_name][websocket].put(audio_chunk)
-                print(f'{websocket.remote_address}, {audio_chunk[:6]}: before receive: {before_receive_time}, after receive: {after_receive_time}', file=sys.stderr)
-                # await asyncio.sleep(0)
         finally:
             self.rooms[room_name].remove(websocket)
             del self.audio_buffers[room_name][websocket]
@@ -52,36 +47,16 @@ class ChatServer:
     async def mix_and_broadcast(self, room_name):
         while True:
             try:
-                print(f'Before sleep: {time.time()}', file=sys.stderr)
-                # clear the queue in the room every chunk duration
-                await asyncio.sleep(self.buffer_duration)
+                # wait until all the buffers in the room exceed the max buffer size
+                all_buffers_full = False
+                while not all_buffers_full:
+                    await asyncio.sleep(0.01)  # sleep for a short duration to avoid busy waiting
+                    all_buffers_full = all(buffer.qsize() >= self.max_buffer_size for buffer in self.audio_buffers[room_name].values())
+
+                # load self.max_buffer_size of audio chunks from the buffers
                 audio_chunks = {}
-
-                print(f'After sleep, Before cleaning: {time.time()}', file=sys.stderr)
                 for client, buffer in self.audio_buffers[room_name].items():
-                    audio_chunks[client] = []
-                    while not buffer.empty():
-                        audio_chunks[client].append(await buffer.get())
-
-                print(f'After cleaning: {time.time()}', file=sys.stderr)
-
-                # DEBUG: print the number of chunks received from each client
-                message = ', '.join(f'{client.remote_address}:{len(chunks)}' for client, chunks in audio_chunks.items())
-                print(f"Before padding, {message}, {time.time()}", file=sys.stderr)
-
-                # the number of chunks received from each client could be different
-                # we need to pad the shorter chunks with silence to self.max_buffer_size
-                for client, chunks in audio_chunks.items():
-                    if len(chunks) < self.max_buffer_size:
-                        audio_chunks[client] += [b"\x00" * len(chunks[0])] * (self.max_buffer_size - len(chunks))
-
-                # and remove the chunks that are more than self.max_buffer_size
-                for client, chunks in audio_chunks.items():
-                    audio_chunks[client] = chunks[:self.max_buffer_size]
-
-                # DEBUG: print the number of chunks after padding and truncating
-                message = ', '.join(f'{client.remote_address}:{len(chunks)}' for client, chunks in audio_chunks.items())
-                print(f"After padding, {message}, {time.time()}", file=sys.stderr)
+                    audio_chunks[client] = [await buffer.get() for _ in range(self.max_buffer_size)]
 
                 # broadcast the audio chunks to all clients in the room
                 for client in self.rooms[room_name]:
@@ -105,7 +80,6 @@ class ChatServer:
             return None
 
         # Mix the audio chunks by calculating the mean of each chunk over all clients
-        mixed_chunk = bytearray()
         audio_chunks: List[List[bytes]] = list(audio_chunks.values()) # List of List of bytes
 
         # joint the bytes in the list
@@ -113,9 +87,11 @@ class ChatServer:
 
         # average the byte data
         arrays: List[np.ndarray] = [np.frombuffer(chunk, dtype=np.int16) for chunk in audio_chunks]
-        mixed_chunk = np.mean(arrays, axis=0).astype(np.int16).tobytes()
+        mixed_chunk = np.mean(arrays, axis=0).astype(np.int16)
 
-        return mixed_chunk
+        print(np.max(mixed_chunk), np.min(mixed_chunk), np.mean(mixed_chunk), np.std(mixed_chunk), file=sys.stderr)
+
+        return mixed_chunk.tobytes()
 
     async def run(self, host, port):
         async with websockets.serve(self.handler, host, port):

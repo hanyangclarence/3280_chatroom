@@ -6,6 +6,7 @@ from tkinter import simpledialog
 from threading import Thread
 from config import config
 import time
+import numpy as np
 
 
 class AudioChatClientGUI:
@@ -79,7 +80,10 @@ class AudioChatClientGUI:
                 before_receive_time = time.time()
                 message = await websocket.recv()
                 after_receive_time = time.time()
-                stream.write(message)
+
+                # run the stream.write in a separate thread to avoid blocking
+                await asyncio.get_event_loop().run_in_executor(None, stream.write, message)
+
                 after_play_time = time.time()
                 print(f'Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
         except websockets.exceptions.ConnectionClosedError as e:
