@@ -1,5 +1,6 @@
 config = {
-    "ip": "10.13.62.241",
+    # "ip": "10.13.181.168",  # yz
+    "ip": "localhost",
     "port": 5678,
 
     "channel": 1,

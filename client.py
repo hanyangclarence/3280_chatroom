@@ -4,14 +4,18 @@ import pyaudio
 import tkinter as tk
 from tkinter import simpledialog
 from threading import Thread
+from config import config
+import time
+import numpy as np
+
 
 class AudioChatClientGUI:
-    def __init__(self, uri):
+    def __init__(self, uri, config):
         self.uri = uri
         self.audio_format = pyaudio.paInt16
-        self.channels = 1
-        self.rate = 16000
-        self.chunk_size = 256
+        self.channels = config["channel"]
+        self.rate = config["rate"]
+        self.chunk_size = config["chunk_size"]
         self.pyaudio_instance = pyaudio.PyAudio()
         self.count = 0
         self.root = tk.Tk()
@@ -58,10 +62,13 @@ class AudioChatClientGUI:
         try:
             counter = 1
             while True:
-                print(f'Send: {counter}')
                 counter += 1
+                before_read_time = time.time()
                 data = stream.read(self.chunk_size, exception_on_overflow=False)
+                after_read_time = time.time()
                 await websocket.send(data)
+                after_send_time = time.time()
+                print(f'data: {data[:6]}, read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
                 await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
@@ -69,10 +76,16 @@ class AudioChatClientGUI:
     async def receive_and_play(self, websocket, stream):
         try:
             while True:
-                print(f'Receive: {self.count}')
                 self.count += 1
+                before_receive_time = time.time()
                 message = await websocket.recv()
-                stream.write(message)
+                after_receive_time = time.time()
+
+                # run the stream.write in a separate thread to avoid blocking
+                await asyncio.get_event_loop().run_in_executor(None, stream.write, message)
+
+                after_play_time = time.time()
+                print(f'Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
 
@@ -99,7 +112,8 @@ class AudioChatClientGUI:
     def start_gui(self):
         self.root.mainloop()
 
+
 if __name__ == "__main__":
-    uri = "ws://10.13.181.168:5678"
-    client = AudioChatClientGUI(uri)
+    uri = f"ws://{config['ip']}:{config['port']}"
+    client = AudioChatClientGUI(uri, config=config)
     client.start_gui()
