@@ -1,7 +1,7 @@
 import asyncio
 import websockets
-from config import config
 import sys
+from config import config
 from typing import List, Dict, Set, Optional, Any
 import numpy as np
 import time
@@ -16,17 +16,59 @@ class ChatServer:
         self.audio_buffers: Dict[str, Dict[Socket, asyncio.Queue]] = {}
         # Maps room names to an asyncio task that do audio mixing
         self.mixing_tasks: Dict[str, Any] = {}
+        self.room_list: Set[str] = set()  # Maintain a list of all rooms
 
         self.max_buffer_size = config["max_buffer_size"]
         self.amplification_factor = config["amplification_factor"]
+   
+    async def handler(self, websocket: Socket, path):
+        message = await websocket.recv()
+        try:
+            if isinstance(message, bytes):
+                action = message.decode('utf-8')
+            else:
+                action = message
+        except UnicodeDecodeError:
+            print("Received data could not be decoded as UTF-8. It might be binary data.")
+            return  
+        
+        if action == "LIST":
+            await websocket.send(",".join(self.room_list))
+            return  
+        elif action.startswith("CREATE"):
+            room_name = action.split()[1]
+            if room_name not in self.rooms:
+                self.rooms[room_name]: Set[Socket] = set()
+                self.audio_buffers[room_name] = {}
+                self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
+                self.room_list.add(room_name)
+                await websocket.send(f"Room {room_name} created.")
+            else:
+                await websocket.send(f"Room {room_name} already exists.")
+            return  
+        elif action.startswith("DELETE"):
+            room_name = action.split()[1]
+            if room_name in self.rooms:
+                self.delete_room(room_name)
+                await websocket.send(f"Room {room_name} deleted.")
+            else:
+                await websocket.send("Room not found.")
+            return  
+        elif action.startswith("LEAVE"):
+            room_name = action.split()[1]
+            if room_name in self.rooms and websocket in self.rooms[room_name]:
+                self.rooms[room_name].remove(websocket)
+                print(f"Client disconnected from room: {room_name}.")
+        else:
+            await self.handle_join(websocket, action)
 
-    async def handler(self, websocket: Socket):
-        room_name = await websocket.recv()  # First message is the room name
-
+    async def handle_join(self, websocket: Socket, room_name: str):
         if room_name not in self.rooms:
             self.rooms[room_name]: Set[Socket] = set()
             self.audio_buffers[room_name] = {}
             self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
+            self.room_list.add(room_name)  # Add the room name to the room list
+            print(f"Room {room_name} created and added to the room list.")
 
         self.rooms[room_name].add(websocket)
         self.audio_buffers[room_name][websocket] = asyncio.Queue()
@@ -37,16 +79,21 @@ class ChatServer:
                 audio_chunk = await websocket.recv()
                 await self.audio_buffers[room_name][websocket].put(audio_chunk)
         finally:
-            self.rooms[room_name].remove(websocket)
-            del self.audio_buffers[room_name][websocket]
-            if not self.rooms[room_name]:  # If the room is empty, remove it
-                self.mixing_tasks[room_name].cancel()
-                del self.rooms[room_name]
-                del self.audio_buffers[room_name]
-                del self.mixing_tasks[room_name]
-                print(f"Room {room_name} deleted as the last client disconnected.")
+            if websocket in self.rooms[room_name]:
+                self.rooms[room_name].remove(websocket)
+            if websocket in self.audio_buffers[room_name]:
+                del self.audio_buffers[room_name][websocket]
+            if len(self.rooms[room_name]) == 0:
+                print(f"No clients left in room: {room_name}, but the room remains until explicitly deleted.")
             else:
                 print(f"Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
+
+    def delete_room(self, room_name: str):
+        self.mixing_tasks[room_name].cancel()
+        del self.rooms[room_name]
+        del self.audio_buffers[room_name]
+        del self.mixing_tasks[room_name]
+        self.room_list.remove(room_name)
 
     async def mix_and_broadcast(self, room_name: str):
         while True:
