@@ -21,8 +21,9 @@ class ChatServer:
         self.amplification_factor = config["amplification_factor"]
 
     async def handler(self, websocket: Socket):
+        print("here11",websocket)
         room_name = await websocket.recv()  # First message is the room name
-
+        print("here1",room_name)
         if room_name not in self.rooms:
             self.rooms[room_name]: Set[Socket] = set()
             self.audio_buffers[room_name] = {}
@@ -34,7 +35,12 @@ class ChatServer:
 
         try:
             while True:
+                print("here10")
                 audio_chunk = await websocket.recv()
+                # print(audio_chunk)
+                if audio_chunk == "exit":
+                    print("here9")
+                    break
                 await self.audio_buffers[room_name][websocket].put(audio_chunk)
         finally:
             self.rooms[room_name].remove(websocket)
