@@ -22,9 +22,13 @@ class AudioChatClientGUI:
         self.root = tk.Tk()
         self.root.title("Audio Chat Client")
 
-        self.setup_gui()
+        self.cancel_echo = False
+        self.record_stream = None
+        self.play_stream = None
 
-    def setup_gui(self):
+        self._setup_gui()
+
+    def _setup_gui(self):
         self.status_label = tk.Label(self.root, text="Disconnected", fg="red")
         self.status_label.pack(pady=10)
 
@@ -45,16 +49,6 @@ class AudioChatClientGUI:
 
         self.delete_room_button = tk.Button(self.root, text="Delete Selected Room", command=self.delete_selected_room)
         self.delete_room_button.pack(pady=5)
-
-    def create_room(self):
-        room_name = simpledialog.askstring("Input", "Enter the chat room name:", parent=self.root)
-        if room_name:
-            async def create_room_async():
-                async with websockets.connect(self.uri) as websocket:
-                    await websocket.send(f"CREATE {room_name}")
-                    response = await websocket.recv()
-                    messagebox.showinfo("Info", response)
-            Thread(target=lambda: asyncio.run(create_room_async()), daemon=True).start()
 
     def create_room(self):
         room_name = simpledialog.askstring("Input", "Enter the chat room name:", parent=self.root)
@@ -118,11 +112,11 @@ class AudioChatClientGUI:
         self.status_label.config(text="Disconnected", fg="red")
         self.chat_room = ""
 
-
     def delete_selected_room(self):
         selection = self.rooms_listbox.curselection()
         if selection:
             room_to_delete = self.rooms_listbox.get(selection[0])
+
             async def delete_room_async():
                 async with websockets.connect(self.uri) as websocket:
                     await websocket.send(f"DELETE {room_to_delete}")
@@ -161,59 +155,49 @@ class AudioChatClientGUI:
 
         return record_stream, play_stream
 
-    async def record_and_send(self, websocket, stream):
+    async def record_and_send(self, websocket):
         try:
             counter = 1
             while True:
                 counter += 1
-                before_read_time = time.time()
-                data = stream.read(self.chunk_size, exception_on_overflow=False)
-                after_read_time = time.time()
+                data = self.record_stream.read(self.chunk_size, exception_on_overflow=False)
                 await websocket.send(data)
-                after_send_time = time.time()
-                print(f'data: {data[:6]}, read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
                 await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
 
-    async def receive_and_play(self, websocket, stream):
+    async def receive_and_play(self, websocket):
         try:
             while True:
                 self.count += 1
-                before_receive_time = time.time()
                 message = await websocket.recv()
-                after_receive_time = time.time()
-
                 # run the stream.write in a separate thread to avoid blocking
-                await asyncio.get_event_loop().run_in_executor(None, stream.write, message)
-
-                after_play_time = time.time()
-                print(f'Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
+                await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, message)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
 
     async def run(self):
-        record_stream, play_stream = None, None
         try:
             async with websockets.connect(self.uri) as websocket:
                 await websocket.send(self.chat_room)  # Use the GUI-input chat room name
-                record_stream, play_stream = self.open_stream()
-                send_task = asyncio.create_task(self.record_and_send(websocket, record_stream))
-                receive_task = asyncio.create_task(self.receive_and_play(websocket, play_stream))
+                self.record_stream, self.play_stream = self.open_stream()
+                send_task = asyncio.create_task(self.record_and_send(websocket))
+                receive_task = asyncio.create_task(self.receive_and_play(websocket))
                 await asyncio.gather(send_task, receive_task)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
         finally:
-            if record_stream:
-                record_stream.stop_stream()
-                record_stream.close()
-            if play_stream:
-                play_stream.stop_stream()
-                play_stream.close()
+            if self.record_stream:
+                self.record_stream.stop_stream()
+                self.record_stream.close()
+            if self.play_stream:
+                self.play_stream.stop_stream()
+                self.play_stream.close()
             self.pyaudio_instance.terminate()
 
     def start_gui(self):
         self.root.mainloop()
+
 
 if __name__ == "__main__":
     try:
