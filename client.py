@@ -21,7 +21,6 @@ class AudioChatClientGUI(QMainWindow):
         self.count = 0
         self.websocket = None  # Initialize websocket attribute
         self.is_in_room = False
-        self.is_running = True
 
         # Setup GUI
         self.setWindowTitle("Audio Chat Client")
@@ -47,7 +46,6 @@ class AudioChatClientGUI(QMainWindow):
         self.setCentralWidget(container)
 
     def closeEvent(self, event):
-        self.is_running = False
         asyncio.ensure_future(self.stop_chat())
         self.pyaudio_instance.terminate()
         self.connect_task.cancel()
