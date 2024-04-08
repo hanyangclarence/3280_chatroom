@@ -24,6 +24,7 @@ class ChatServer:
 
         self.max_buffer_size = config["max_buffer_size"]
         self.amplification_factor = config["amplification_factor"]
+        self.socket_name_mapping: Dict[str, (Socket, Socket)] = {}
    
     async def handler(self, websocket: Socket, path):
         message = await websocket.recv()
@@ -72,35 +73,28 @@ class ChatServer:
     async def handler2(self, websocket: Socket, path):
         message = await websocket.recv()
 
-        await self.handle_join(websocket, message)
+        await self.handle_join2(websocket, message)
     async def handle_join(self, websocket: Socket, message: str):
         data = json.loads(message)
         room_name = data['room']
-        if data['type'] == 'audio':
-            if room_name not in self.rooms:
-                self.rooms[room_name]: Set[Socket] = set()
-                self.rooms2[room_name]: Set[Socket] = set()
-                self.audio_buffers[room_name] = {}
-                self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
-                self.video_buffers[room_name] = {}
-                self.video_broadcast_tasks[room_name] = asyncio.create_task(self.broadcast_video(room_name))
-                self.room_list.add(room_name)  # Add the room name to the room list
-                print(f"Room {room_name} created and added to the room list.")
+        if room_name not in self.rooms:
+            self.rooms[room_name]: Set[Socket] = set()
+            self.rooms2[room_name]: Set[Socket] = set()
+            self.audio_buffers[room_name] = {}
+            self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
+            self.video_buffers[room_name] = {}
+            self.video_broadcast_tasks[room_name] = asyncio.create_task(self.broadcast_video(room_name))
+            self.room_list.add(room_name)  # Add the room name to the room list
+            print(f"Room {room_name} created and added to the room list.")
 
-            self.rooms[room_name].add(websocket)
-            self.audio_buffers[room_name][websocket] = asyncio.Queue()
-        else:
-            self.rooms2[room_name].add(websocket)
-            self.video_buffers[room_name][websocket] = b''
+        self.rooms[room_name].add(websocket)
+        self.audio_buffers[room_name][websocket] = asyncio.Queue()
         print(f"New client connected to {room_name}. Total clients in room: {len(self.rooms[room_name])}")
 
         try:
-            while True:
+            while websocket in self.rooms[room_name]:
                 message = await websocket.recv()
-                if message.startswith(b"AUDIO"):
-                    await self.audio_buffers[room_name][websocket].put(message[5:])
-                elif message.startswith(b"VIDEO"):
-                    self.video_buffers[room_name][websocket] = message[5:]
+                await self.audio_buffers[room_name][websocket].put(message[5:])
 
         finally:
             if websocket in self.rooms[room_name]:
@@ -108,6 +102,28 @@ class ChatServer:
             if websocket in self.audio_buffers[room_name]:
                 del self.audio_buffers[room_name][websocket]
             if len(self.rooms[room_name]) == 0:
+                print(f"No clients left in room: {room_name}, but the room remains until explicitly deleted.")
+            else:
+                print(f"Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
+
+    async def handle_join2(self, websocket: Socket, message: str):
+        data = json.loads(message)
+        room_name = data['room']
+        self.rooms2[room_name].add(websocket)
+        self.video_buffers[room_name][websocket] = b''
+        print(f"New client connected to {room_name}. Total clients in room: {len(self.rooms[room_name])}")
+
+        try:
+            while websocket in self.rooms2[room_name]:
+                message = await websocket.recv()
+                self.video_buffers[room_name][websocket] = message[5:]
+
+        finally:
+            if websocket in self.rooms[room_name]:
+                self.rooms2[room_name].remove(websocket)
+            if websocket in self.audio_buffers[room_name]:
+                del self.audio_buffers[room_name][websocket]
+            if len(self.rooms2[room_name]) == 0:
                 print(f"No clients left in room: {room_name}, but the room remains until explicitly deleted.")
             else:
                 print(f"Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")

@@ -96,8 +96,10 @@ class AudioChatClientGUI:
     def disconnect_from_room(self):
         async def disconnect_async():
             try:
-                async with websockets.connect(self.uri) as websocket:
-                    await websocket.send(f"LEAVE {self.chat_room}")
+                self.send_task.cancel()
+                self.receive_task.cancel()
+                self.send_video_task.cancel()
+                self.receive_video_task.cancel()
             except Exception as e:
                 print(f"Error disconnecting from room: {e}")
             finally:
@@ -115,6 +117,10 @@ class AudioChatClientGUI:
             self.play_stream.stop_stream()
             self.play_stream.close()
             self.play_stream = None
+        for label in self.client_video_labels:
+            label.pack_forget()
+        self.client_video_labels = {}
+        self.mylbl.pack_forget()
         self.pyaudio_instance.terminate()
         
         self.update_ui_after_disconnect()
@@ -141,6 +147,7 @@ class AudioChatClientGUI:
             messagebox.showerror("Error", "Please select a room first")
 
     def run_client(self):
+        print("here1")
         asyncio.run(self.run())
 
     def open_stream(self):
@@ -259,7 +266,7 @@ class AudioChatClientGUI:
         label.configure(image=image_tk)
 
     async def run(self):
-        record_stream, play_stream = None, None
+        print("here2")
         try:
             async with websockets.connect(self.uri) as websocket:
                 await websocket.send(json.dumps({"room":self.chat_room,"user":self.username,"type":"audio"}))  # Use the GUI-input chat room name
@@ -267,23 +274,22 @@ class AudioChatClientGUI:
                 if not self.capture.isOpened():
                     print("无法打开摄像头")
                     exit()
-                send_task = asyncio.create_task(self.record_and_send(websocket, record_stream))
-                receive_task = asyncio.create_task(self.receive_and_play(websocket, play_stream))
+                self.send_task = asyncio.create_task(self.record_and_send(websocket, record_stream))
+                self.receive_task = asyncio.create_task(self.receive_and_play(websocket, play_stream))
                 websocket2 = await websockets.connect(f"ws://{config['ip']}:5679")
                 await websocket2.send(json.dumps({"room":self.chat_room,"user":self.username,"type":"video"}))
-                send_video_task = asyncio.create_task(self.record_and_send_video(websocket2))
-                receive_video_task = asyncio.create_task(self.receive_and_play_video(websocket2))
-                await asyncio.gather(send_task,receive_task, send_video_task, receive_video_task)
+                self.send_video_task = asyncio.create_task(self.record_and_send_video(websocket2))
+                self.receive_video_task = asyncio.create_task(self.receive_and_play_video(websocket2))
+                try:
+                    await asyncio.gather(self.send_task,self.receive_task, self.send_video_task, self.receive_video_task)
+                except asyncio.CancelledError:
+                    print("Tasks cancelled")
+                    await websocket.send(f"LEAVE {self.chat_room}")
+                    # await websocket.send("exit")
+                    self.receive_task = None
+                    self.send_task = None
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
-        finally:
-            if record_stream:
-                record_stream.stop_stream()
-                record_stream.close()
-            if play_stream:
-                play_stream.stop_stream()
-                play_stream.close()
-            self.pyaudio_instance.terminate()
 
     def start_gui(self):
         self.root.mainloop()
