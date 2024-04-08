@@ -72,8 +72,13 @@ class ChatServer:
 
     async def handler2(self, websocket: Socket, path):
         message = await websocket.recv()
-
-        await self.handle_join2(websocket, message)
+        if message.startswith("LEAVE"):
+            room_name = message.split()[1]
+            if room_name in self.rooms and websocket in self.rooms2[room_name]:
+                self.rooms2[room_name].remove(websocket)
+                print(f"Client disconnected from room: {room_name}.")
+        else:
+            await self.handle_join2(websocket, message)
     async def handle_join(self, websocket: Socket, message: str):
         data = json.loads(message)
         room_name = data['room']
