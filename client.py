@@ -23,6 +23,7 @@ class AudioChatClientGUI:
 
         self.record_stream = None
         self.play_stream = None
+        self.is_muted = False
 
         self._setup_gui()
 
@@ -48,6 +49,9 @@ class AudioChatClientGUI:
         self.delete_room_button = tk.Button(self.root, text="Delete Selected Room", command=self.delete_selected_room)
         self.delete_room_button.pack(pady=5)
 
+        self.mute_button = tk.Button(self.root, text="Mute", command=self.toggle_mute)
+        self.mute_button.pack(pady=5)
+
     def create_room(self):
         room_name = simpledialog.askstring("Input", "Enter the chat room name:", parent=self.root)
         if room_name:
@@ -69,6 +73,14 @@ class AudioChatClientGUI:
                         self.rooms_listbox.insert(tk.END, room)
 
         Thread(target=lambda: asyncio.run(list_rooms_async()), daemon=True).start()
+
+    def toggle_mute(self):
+        if self.is_muted:
+            self.is_muted = False
+            self.mute_button.config(text="Mute")
+        else:
+            self.is_muted = True
+            self.mute_button.config(text="Unmute")
 
     def connect_to_selected_room(self):
         selection = self.rooms_listbox.curselection()
@@ -156,9 +168,16 @@ class AudioChatClientGUI:
     async def record_and_send(self, websocket):
         try:
             while True:
-                data = self.record_stream.read(self.chunk_size, exception_on_overflow=False)
-                await websocket.send(data)
-                await asyncio.sleep(0)
+                if not self.is_muted:
+                    data = self.record_stream.read(self.chunk_size, exception_on_overflow=False)
+                    await websocket.send(data)
+                    await asyncio.sleep(0)
+                else:
+                    # sleep for the same duration as the recording interval to avoid busy waiting
+                    time.sleep(self.chunk_size / self.rate)
+                    mute_message = 'MUTE'
+                    await websocket.send(mute_message)
+                    await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
 
