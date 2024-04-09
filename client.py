@@ -18,11 +18,9 @@ class AudioChatClientGUI:
         self.chunk_size = config["chunk_size"]
         self.pyaudio_instance = pyaudio.PyAudio()
         self.chat_room = ""  # Keep track of the current room
-        self.count = 0
         self.root = tk.Tk()
         self.root.title("Audio Chat Client")
 
-        self.cancel_echo = False
         self.record_stream = None
         self.play_stream = None
 
@@ -157,9 +155,7 @@ class AudioChatClientGUI:
 
     async def record_and_send(self, websocket):
         try:
-            counter = 1
             while True:
-                counter += 1
                 data = self.record_stream.read(self.chunk_size, exception_on_overflow=False)
                 await websocket.send(data)
                 await asyncio.sleep(0)
@@ -169,7 +165,6 @@ class AudioChatClientGUI:
     async def receive_and_play(self, websocket):
         try:
             while True:
-                self.count += 1
                 message = await websocket.recv()
                 # run the stream.write in a separate thread to avoid blocking
                 await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, message)
