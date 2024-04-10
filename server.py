@@ -98,6 +98,7 @@ class ChatServer:
                         while not self.audio_buffers[room_name][websocket].empty():
                             self.audio_buffers[room_name][websocket].get_nowait()
                         self.print_status()
+                await asyncio.sleep(0)
         finally:
             if websocket in self.rooms[room_name]:
                 self.rooms[room_name].remove(websocket)
