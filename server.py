@@ -59,22 +59,22 @@ class ChatServer:
             else:
                 await websocket.send("Room not found.")
             return  
-        elif action.startswith("LEAVE"):
-            room_name = action.split()[1]
-            if room_name in self.rooms and websocket in self.rooms[room_name]:
-                self.rooms[room_name].remove(websocket)
-                print(f"Client disconnected from room: {room_name}.")
+        # elif action.startswith("LEAVE"):
+        #     room_name = action.split()[1]
+        #     if room_name in self.rooms and websocket in self.rooms[room_name]:
+        #         self.rooms[room_name].remove(websocket)
+        #         print(f"Client disconnected from room: {room_name}.")
         else:
             await self.handle_join(websocket, action)
 
     async def handle_join(self, websocket: Socket, room_name: str):
         if room_name not in self.rooms:
-            raise Exception('This condition should not be reached')
             self.rooms[room_name]: Set[Socket] = set()
             self.audio_buffers[room_name] = {}
             self.muted_clients[room_name] = []
             self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
             self.room_list.add(room_name)  # Add the room name to the room list
+            raise Exception('This condition should not be reached')
 
         self.rooms[room_name].add(websocket)
         self.audio_buffers[room_name][websocket] = asyncio.Queue()
