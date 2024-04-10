@@ -143,6 +143,7 @@ class ChatServer:
                         audio_chunks[client] = [await buffer.get() for _ in range(self.max_buffer_size)]
 
                 # broadcast the audio chunks to all clients in the room, including the muted clients
+                mixed_chunk_with_self = self.mix_audio({k: v for k, v in audio_chunks.items()})
                 for client in self.rooms[room_name]:
                     print(f'Client: {client.remote_address} received from', end=' ')
                     # mix the audio chunks except the client's own audio
@@ -151,7 +152,7 @@ class ChatServer:
                     if mixed_chunk is None:
                         continue
 
-                    await client.send(mixed_chunk)
+                    await client.send(mixed_chunk+mixed_chunk_with_self)
             except Exception as e:
                 print(f'error found: {e}', file=sys.stderr)
 

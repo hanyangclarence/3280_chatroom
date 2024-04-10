@@ -7,10 +7,13 @@ from threading import Thread
 from config import config
 import time
 import numpy as np
+import ReadWrite
+import os
 
 
 class AudioChatClientGUI:
     def __init__(self, uri, config):
+        self.config = config
         self.uri = uri
         self.audio_format = pyaudio.paInt16
         self.channels = config["channel"]
@@ -25,6 +28,9 @@ class AudioChatClientGUI:
         self.play_stream = None
         self.is_muted = False
 
+        self.audio = ReadWrite.Audio()
+        self.audio.loadConfig(config["rate"], config["channel"], bytesPerSample=2)
+        
         self._setup_gui()
 
     def _setup_gui(self):
@@ -51,6 +57,9 @@ class AudioChatClientGUI:
 
         self.mute_button = tk.Button(self.root, text="Mute", command=self.toggle_mute)
         self.mute_button.pack(pady=5)
+        
+        self.save_recording_button = tk.Button(self.root, text="Save Recording", command=self.save_recording)
+        self.save_recording_button.pack(pady=5)
 
     def create_room(self):
         room_name = simpledialog.askstring("Input", "Enter the chat room name:", parent=self.root)
@@ -184,11 +193,20 @@ class AudioChatClientGUI:
     async def receive_and_play(self, websocket):
         try:
             while True:
+                #message is chunks_without_self + chunks_with_self
                 message = await websocket.recv()
+                size = len(message)
+                chunks_without_self = message[0: size//2]
+                chunks_with_self = message[size//2: size]
+                self.audio.appendData(chunks_with_self, self.config["rate"], self.config["channel"], 2)
                 # run the stream.write in a separate thread to avoid blocking
-                await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, message)
+                await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, chunks_without_self)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
+            
+    def save_recording(self):
+        self.audio.write(os.path.join(os.getcwd(), self.config["record_path"]))
+        print("saved")
 
     async def run(self):
         try:
