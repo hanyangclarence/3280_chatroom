@@ -68,11 +68,11 @@ class ChatServer:
             else:
                 await websocket.send("Room not found.")
             return  
-        elif action.startswith("LEAVE"):
-            room_name = action.split()[1]
-            if room_name in self.rooms and websocket in self.rooms[room_name]:
-                self.rooms[room_name].remove(websocket)
-                print(f"Client disconnected from room: {room_name}.")
+        # elif action.startswith("LEAVE"):
+        #     room_name = action.split()[1]
+        #     if room_name in self.rooms and websocket in self.rooms[room_name]:
+        #         self.rooms[room_name].remove(websocket)
+        #         print(f"Client disconnected from room: {room_name}.")
         else:
             await self.handle_join(websocket, action)
     async def handler2(self, websocket: Socket, path):
@@ -87,12 +87,12 @@ class ChatServer:
 
     async def handle_join(self, websocket: Socket, room_name: str):
         if room_name not in self.rooms:
-            raise Exception('This condition should not be reached')
             self.rooms[room_name]: Set[Socket] = set()
             self.audio_buffers[room_name] = {}
             self.muted_clients[room_name] = []
             self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
             self.room_list.add(room_name)  # Add the room name to the room list
+            raise Exception('This condition should not be reached')
 
         self.rooms[room_name].add(websocket)
         self.audio_buffers[room_name][websocket] = asyncio.Queue()
@@ -106,7 +106,7 @@ class ChatServer:
                         # previously the client is muted, then unmute the client
                         self.remove_client_from_mutelist(room_name, websocket)
                         self.print_status()
-                    await self.audio_buffers[room_name][websocket].put(audio_chunk)
+                    self.audio_buffers[room_name][websocket].put_nowait(audio_chunk)
                 else:
                     assert audio_chunk == 'MUTE', f"Invalid message received: {audio_chunk}, {type(audio_chunk)}"
                     # if MUTE is received, add the client to the muted list
@@ -182,11 +182,11 @@ class ChatServer:
                 audio_chunks: Dict[Socket, List[bytes]] = {}
                 for client, buffer in self.audio_buffers[room_name].items():
                     if client not in self.muted_clients[room_name]:
-                        audio_chunks[client] = [await buffer.get() for _ in range(self.max_buffer_size)]
+                        audio_chunks[client] = [buffer.get_nowait() for _ in range(self.max_buffer_size)]
 
                 # broadcast the audio chunks to all clients in the room, including the muted clients
                 for client in self.rooms[room_name]:
-                    print(f'Client: {client.remote_address} received from', end=' ')
+                    print(f'Room {room_name}, Client: {client.remote_address} received from', end=' ')
                     # mix the audio chunks except the client's own audio
                     mixed_chunk = self.mix_audio({k: v for k, v in audio_chunks.items() if k != client})
 

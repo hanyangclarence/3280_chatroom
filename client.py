@@ -28,6 +28,7 @@ class AudioChatClientGUI:
         self.websocket = None
         self.send_task = None
         self.receive_task = None
+
         self.record_stream = None
         self.play_stream = None
         self.is_muted = False
@@ -108,42 +109,45 @@ class AudioChatClientGUI:
         else:
             messagebox.showerror("Error", "Please select a room first")
     
-    async def disconnect(self):
-        if self.send_task is not None:
-            self.send_task.cancel()
-            self.send_task = None
-        if self.receive_task is not None:
-            self.receive_task.cancel()
-            self.receive_task = None
-        if self.websocket is not None:
-            await self.websocket.close()
-            self.websocket = None
-        self.cleanup_resources()
+    # def disconnect_from_room(self):
+    #     selection = self.rooms_listbox.curselection()
+    #     if selection:
+    #         self.chat_room = self.rooms_listbox.get(selection[0])
+    #         self.status_label.config(text="Disconnected", fg="red")
+    #         self.chat_room = ""
+    #     else:
+    #         messagebox.showerror("Error", "Please select a room first")
 
-    def cleanup_resources(self):
-        if self.record_stream is not None:
-            self.record_stream.stop_stream()
-            self.record_stream.close()
-            self.record_stream = None
-        if self.play_stream is not None:
-            self.play_stream.stop_stream()
-            self.play_stream.close()
-            self.play_stream = None
-        if self.pyaudio_instance is not None:
-            self.pyaudio_instance.terminate()
-            self.pyaudio_instance = None
-        for label in self.client_video_labels.values():
-            label.pack_forget()
-        self.client_video_labels = {}
-        self.mylbl.pack_forget()
-        self.update_ui_after_disconnect()
+    # def disconnect_from_room(self):
+    #     async def disconnect_async():
+    #         try:
+    #             async with websockets.connect(self.uri) as websocket:
+    #                 await websocket.send(f"LEAVE {self.chat_room}")
+    #         except Exception as e:
+    #             print(f"Error disconnecting from room: {e}")
+    #         finally:
+    #             self.root.after(0, self.cleanup_resources)
 
-    def update_ui_after_disconnect(self):
-        self.status_label.config(text="Disconnected", fg="red")
-        self.chat_room = ""
+    #     Thread(target=lambda: asyncio.run(disconnect_async()), daemon=True).start()
 
-    def disconnect_from_room(self):
-        asyncio.run(self.disconnect())
+    # def cleanup_resources(self):
+    #     if hasattr(self, 'record_stream') and self.record_stream is not None:
+    #         self.record_stream.stop_stream()
+    #         self.record_stream.close()
+    #         self.record_stream = None
+
+    #     if hasattr(self, 'play_stream') and self.play_stream is not None:
+    #         self.play_stream.stop_stream()
+    #         self.play_stream.close()
+    #         self.play_stream = None
+    #     self.pyaudio_instance.terminate()
+
+    #     self.update_ui_after_disconnect()
+
+    # def update_ui_after_disconnect(self):
+    #     print("Updating UI after disconnecting...")
+    #     self.status_label.config(text="Disconnected", fg="red")
+    #     self.chat_room = ""
 
     def delete_selected_room(self):
         selection = self.rooms_listbox.curselection()
@@ -308,6 +312,45 @@ class AudioChatClientGUI:
                                          self.receive_video_task)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
+        # finally:
+        #     await self.disconnect()
+
+    async def disconnect(self):
+        if self.send_task is not None:
+            self.send_task.cancel()
+            self.send_task = None
+        if self.receive_task is not None:
+            self.receive_task.cancel()
+            self.receive_task = None
+        if self.websocket is not None:
+            await self.websocket.close()
+            self.websocket = None
+        self.cleanup_resources()
+
+    def cleanup_resources(self):
+        if self.record_stream is not None:
+            self.record_stream.stop_stream()
+            self.record_stream.close()
+            self.record_stream = None
+        if self.play_stream is not None:
+            self.play_stream.stop_stream()
+            self.play_stream.close()
+            self.play_stream = None
+        if self.pyaudio_instance is not None:
+            self.pyaudio_instance.terminate()
+            self.pyaudio_instance = None
+        self.update_ui_after_disconnect()
+
+    def update_ui_after_disconnect(self):
+        self.status_label.config(text="Disconnected", fg="red")
+        self.chat_room = ""
+        for label in self.client_video_labels.values():
+            label.pack_forget()
+        self.client_video_labels = {}
+        self.mylbl.pack_forget()
+
+    def disconnect_from_room(self):
+        asyncio.run(self.disconnect())
 
     def start_gui(self):
         self.root.mainloop()
