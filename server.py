@@ -6,6 +6,7 @@ from typing import List, Dict, Set, Optional, Any
 import numpy as np
 import time
 from websockets.legacy.server import WebSocketServerProtocol as Socket
+import json
 
 
 class ChatServer:
@@ -19,6 +20,11 @@ class ChatServer:
         self.room_list: Set[str] = set()  # Maintain a list of all rooms
         # Dict of muted clients in each room
         self.muted_clients: Dict[str, List[Socket]] = {}
+
+        self.rooms2: Dict[str, Set[Socket]] = {}
+        self.video_buffers: Dict[str, Dict[Socket, bytes]] = {}
+        self.video_broadcast_tasks: Dict[str, Any] = {}
+        self.socket_name_mapping: Dict[str, Socket] = {}
 
         # set self.audio_chunk_size to the size of each audio chunk in bytes
         self.audio_chunk_size = config['chunk_size'] * config['channel'] * 2  # 2 bytes per sample
@@ -43,9 +49,12 @@ class ChatServer:
             room_name = action.split()[1]
             if room_name not in self.rooms:
                 self.rooms[room_name]: Set[Socket] = set()
+                self.rooms2[room_name]: Set[Socket] = set()
                 self.audio_buffers[room_name] = {}
                 self.muted_clients[room_name] = []
                 self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
+                # self.video_buffers[room_name] = {}
+                # self.video_broadcast_tasks[room_name] = asyncio.create_task(self.broadcast_video(room_name))
                 self.room_list.add(room_name)
                 await websocket.send(f"Room {room_name} created.")
             else:
@@ -66,6 +75,15 @@ class ChatServer:
                 print(f"Client disconnected from room: {room_name}.")
         else:
             await self.handle_join(websocket, action)
+    async def handler2(self, websocket: Socket, path):
+        message = await websocket.recv()
+        if message.startswith("LEAVE"):
+            room_name = message.split()[1]
+            if room_name in self.rooms and websocket in self.rooms2[room_name]:
+                self.rooms2[room_name].remove(websocket)
+                print(f"Client disconnected from room: {room_name}.")
+        else:
+            await self.handle_join2(websocket, message)
 
     async def handle_join(self, websocket: Socket, room_name: str):
         if room_name not in self.rooms:
@@ -111,6 +129,30 @@ class ChatServer:
             else:
                 print(f"Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
             self.print_status()
+    async def handle_join2(self, websocket: Socket, message: str):
+        data = json.loads(message)
+        room_name = data['room']
+        client_name = data['user']
+        self.socket_name_mapping[client_name] = websocket
+        self.rooms2[room_name].add(websocket)
+        # self.video_buffers[room_name][websocket] = b''
+        print(f"New client connected to {room_name}. Total clients in room: {len(self.rooms[room_name])}")
+
+        try:
+            while websocket in self.rooms2[room_name]:
+                message = await websocket.recv()
+                for socket in self.rooms2[room_name]:
+                    if socket != websocket:
+                        await websocket.send(b'V' + client_name.encode('utf-8') + data)
+        finally:
+            if websocket in self.rooms[room_name]:
+                self.rooms2[room_name].remove(websocket)
+            if websocket in self.audio_buffers[room_name]:
+                del self.audio_buffers[room_name][websocket]
+            if len(self.rooms2[room_name]) == 0:
+                print(f"No clients left in room: {room_name}, but the room remains until explicitly deleted.")
+            else:
+                print(f"Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
 
     def delete_room(self, room_name: str):
         self.mixing_tasks[room_name].cancel()
@@ -218,8 +260,17 @@ class ChatServer:
         async with websockets.serve(self.handler, host, port):
             print(f"Server started at ws://{host}:{port}")
             await asyncio.Future()  # run forever
-
+    async def run2(self, host, port):
+        async with websockets.serve(self.handler2, host, port):
+            print(f"Server started at ws://{host}:{port}")
+            await asyncio.Future()
+async def main():
+    server = ChatServer(config)
+    audio_server_task = asyncio.create_task(server.run(config['ip'], config['port']))
+    video_server_task = asyncio.create_task(server.run2(config['ip'], config['port'] + 1))
+    await asyncio.gather(audio_server_task, video_server_task)
 
 if __name__ == "__main__":
-    server = ChatServer(config)
-    asyncio.run(server.run(config['ip'], config['port']))
+    # server = ChatServer(config)
+    # asyncio.run(server.run(config['ip'], config['port']))
+    asyncio.run(main())

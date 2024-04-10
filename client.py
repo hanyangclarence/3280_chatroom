@@ -7,6 +7,9 @@ from threading import Thread
 from config import config
 import time
 import numpy as np
+import cv2
+from PIL import Image, ImageTk
+import json
 
 
 class AudioChatClientGUI:
@@ -20,7 +23,11 @@ class AudioChatClientGUI:
         self.chat_room = ""  # Keep track of the current room
         self.root = tk.Tk()
         self.root.title("Audio Chat Client")
+        self.username = config["my_name"]
 
+        self.websocket = None
+        self.send_task = None
+        self.receive_task = None
         self.record_stream = None
         self.play_stream = None
         self.is_muted = False
@@ -51,6 +58,16 @@ class AudioChatClientGUI:
 
         self.mute_button = tk.Button(self.root, text="Mute", command=self.toggle_mute)
         self.mute_button.pack(pady=5)
+
+        self.video_frame = tk.Frame(self.root, width=200, height=150)
+        self.video_frame.pack(pady=10)
+
+        self.client_video_labels = {}
+
+        self.mylbl = tk.Label(self.video_frame)
+
+        # Start video capture
+        self.capture = cv2.VideoCapture(0)
 
     def create_room(self):
         room_name = simpledialog.askstring("Input", "Enter the chat room name:", parent=self.root)
@@ -91,36 +108,42 @@ class AudioChatClientGUI:
         else:
             messagebox.showerror("Error", "Please select a room first")
     
-    def disconnect_from_room(self):
-        async def disconnect_async():
-            try:
-                async with websockets.connect(self.uri) as websocket:
-                    await websocket.send(f"LEAVE {self.chat_room}")
-            except Exception as e:
-                print(f"Error disconnecting from room: {e}")
-            finally:
-                self.root.after(0, self.cleanup_resources)
-
-        Thread(target=lambda: asyncio.run(disconnect_async()), daemon=True).start()
+    async def disconnect(self):
+        if self.send_task is not None:
+            self.send_task.cancel()
+            self.send_task = None
+        if self.receive_task is not None:
+            self.receive_task.cancel()
+            self.receive_task = None
+        if self.websocket is not None:
+            await self.websocket.close()
+            self.websocket = None
+        self.cleanup_resources()
 
     def cleanup_resources(self):
-        if hasattr(self, 'record_stream') and self.record_stream is not None:
+        if self.record_stream is not None:
             self.record_stream.stop_stream()
             self.record_stream.close()
             self.record_stream = None
-        
-        if hasattr(self, 'play_stream') and self.play_stream is not None:
+        if self.play_stream is not None:
             self.play_stream.stop_stream()
             self.play_stream.close()
             self.play_stream = None
-        self.pyaudio_instance.terminate()
-        
+        if self.pyaudio_instance is not None:
+            self.pyaudio_instance.terminate()
+            self.pyaudio_instance = None
+        for label in self.client_video_labels.values():
+            label.pack_forget()
+        self.client_video_labels = {}
+        self.mylbl.pack_forget()
         self.update_ui_after_disconnect()
 
     def update_ui_after_disconnect(self):
-        print("Updating UI after disconnecting...")
         self.status_label.config(text="Disconnected", fg="red")
         self.chat_room = ""
+
+    def disconnect_from_room(self):
+        asyncio.run(self.disconnect())
 
     def delete_selected_room(self):
         selection = self.rooms_listbox.curselection()
@@ -189,25 +212,102 @@ class AudioChatClientGUI:
                 await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, message)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
+    async def receive_and_play_video(self, websocket):
+        try:
+            while True:
+                before_receive_time = time.time()
+                message = await websocket.recv()
+                after_receive_time = time.time()
+                client_id = message[1:5]  # 前4个字节是客户端ID
+                frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
+
+                # cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # pil_image = Image.fromarray(cv_image)
+                # image_tk = ImageTk.PhotoImage(image=pil_image)
+                # # cv2.imshow('Receiver', frame)
+                # # 如果这是新的客户端，创建一个新的标签
+                # if client_id not in self.client_video_labels:
+                #     self.add_video_label(client_id)
+                #
+                # # 更新对应客户端的视频标签
+                # label = self.client_video_labels[client_id]
+                # label.imgtk = image_tk
+                # label.configure(image=image_tk)
+                # after_play_time = time.time()
+
+                self.root.after(0,self.update_client_video,client_id,frame)
+                # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
+                # await asyncio.sleep(0.01)
+        except websockets.exceptions.ConnectionClosedError as e:
+            print(f"Connection closed during receive and play video process: {e}")
+    def update_client_video(self,client_id,frame):
+        cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(cv_image)
+        image_tk = ImageTk.PhotoImage(image=pil_image)
+        # cv2.imshow('Receiver', frame)
+        # 如果这是新的客户端，创建一个新的标签
+        if client_id not in self.client_video_labels:
+            self.add_video_label(client_id)
+
+        # 更新对应客户端的视频标签
+        label = self.client_video_labels[client_id]
+        label.imgtk = image_tk
+        label.configure(image=image_tk)
+
+    def add_video_label(self, client_id):
+        if client_id not in self.client_video_labels:
+            # 创建一个Label来显示视频
+            label = tk.Label(self.video_frame)
+            label.pack(side="left", padx=10)
+            self.client_video_labels[client_id] = label
+
+    async def record_and_send_video(self, websocket):
+        while self.capture.isOpened():
+            print("here111")
+            before_read_time = time.time()
+            ret, frame = self.capture.read()
+            if not ret:
+                break
+            frame = cv2.resize(frame, (40, 30))
+            # Here you would need to encode the frame using a codec like H.264
+            _, buffer = cv2.imencode('.jpg', frame)
+            after_read_time = time.time()
+            bytes_buffer = buffer.tobytes()
+            image_size = len(bytes_buffer)
+            print(image_size)
+            await websocket.send(b"VIDEO" + bytes_buffer)
+            after_send_time = time.time()
+            frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            img = Image.fromarray(frame_show)
+
+            imgtk = ImageTk.PhotoImage(image=img)
+
+            self.mylbl.imgtk = imgtk
+            self.mylbl.configure(image=imgtk)
+            print(f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
+            # Mimic the delay of video encoding
+            await asyncio.sleep(0.033)  # Roughly 30 frames per second
 
     async def run(self):
         try:
             async with websockets.connect(self.uri) as websocket:
-                await websocket.send(self.chat_room)  # Use the GUI-input chat room name
+                await websocket.send(self.chat_room) # Use the GUI-input chat room name
+                if not self.capture.isOpened():
+                    print("无法打开摄像头")
+                    exit()
                 self.record_stream, self.play_stream = self.open_stream()
-                send_task = asyncio.create_task(self.record_and_send(websocket))
-                receive_task = asyncio.create_task(self.receive_and_play(websocket))
-                await asyncio.gather(send_task, receive_task)
+                self.send_task = asyncio.create_task(self.record_and_send(websocket))
+                self.receive_task = asyncio.create_task(self.receive_and_play(websocket))
+                websocket2 = await websockets.connect(f"ws://{config['ip']}:5679")
+                await websocket2.send(json.dumps({"room": self.chat_room, "user": self.username, "type": "video"}))
+                self.send_video_task = asyncio.create_task(self.record_and_send_video(websocket2))
+                self.mylbl.pack()
+                self.receive_video_task = asyncio.create_task(self.receive_and_play_video(websocket2))
+                await asyncio.gather(self.send_task, self.receive_task, self.send_video_task,
+                                         self.receive_video_task)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
-        finally:
-            if self.record_stream:
-                self.record_stream.stop_stream()
-                self.record_stream.close()
-            if self.play_stream:
-                self.play_stream.stop_stream()
-                self.play_stream.close()
-            self.pyaudio_instance.terminate()
 
     def start_gui(self):
         self.root.mainloop()
