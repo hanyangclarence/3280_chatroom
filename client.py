@@ -182,15 +182,17 @@ class AudioChatClientGUI:
         try:
             while True:
                 if not self.is_muted:
-                    data = self.record_stream.read(self.chunk_size, exception_on_overflow=False)
+                    # Get the running event loop
+                    loop = asyncio.get_event_loop()
+                    data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
                     await websocket.send(data)
-                    await asyncio.sleep(0)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
-                    time.sleep(self.chunk_size / self.rate)
+                    await asyncio.sleep(self.chunk_size / self.rate)
                     mute_message = 'MUTE'
                     await websocket.send(mute_message)
-                    await asyncio.sleep(0)
+                # Give the control back
+                await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
 
