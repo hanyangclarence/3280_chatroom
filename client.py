@@ -73,6 +73,7 @@ class AudioChatClientGUI:
                     await websocket.send(f"CREATE {room_name}")
                     response = await websocket.recv()
                     messagebox.showinfo("Info", response)
+                    self.list_rooms()
             Thread(target=lambda: asyncio.run(create_room_async()), daemon=True).start()
 
     def list_rooms(self):
@@ -104,46 +105,6 @@ class AudioChatClientGUI:
         else:
             messagebox.showerror("Error", "Please select a room first")
     
-    # def disconnect_from_room(self):
-    #     selection = self.rooms_listbox.curselection()
-    #     if selection:
-    #         self.chat_room = self.rooms_listbox.get(selection[0])
-    #         self.status_label.config(text="Disconnected", fg="red")
-    #         self.chat_room = ""
-    #     else:
-    #         messagebox.showerror("Error", "Please select a room first")
-
-    # def disconnect_from_room(self):
-    #     async def disconnect_async():
-    #         try:
-    #             async with websockets.connect(self.uri) as websocket:
-    #                 await websocket.send(f"LEAVE {self.chat_room}")
-    #         except Exception as e:
-    #             print(f"Error disconnecting from room: {e}")
-    #         finally:
-    #             self.root.after(0, self.cleanup_resources)
-
-    #     Thread(target=lambda: asyncio.run(disconnect_async()), daemon=True).start()
-
-    # def cleanup_resources(self):
-    #     if hasattr(self, 'record_stream') and self.record_stream is not None:
-    #         self.record_stream.stop_stream()
-    #         self.record_stream.close()
-    #         self.record_stream = None
-        
-    #     if hasattr(self, 'play_stream') and self.play_stream is not None:
-    #         self.play_stream.stop_stream()
-    #         self.play_stream.close()
-    #         self.play_stream = None
-    #     self.pyaudio_instance.terminate()
-        
-    #     self.update_ui_after_disconnect()
-
-    # def update_ui_after_disconnect(self):
-    #     print("Updating UI after disconnecting...")
-    #     self.status_label.config(text="Disconnected", fg="red")
-    #     self.chat_room = ""
-
     def delete_selected_room(self):
         selection = self.rooms_listbox.curselection()
         if selection:
