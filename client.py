@@ -10,10 +10,13 @@ import numpy as np
 import cv2
 from PIL import Image, ImageTk
 import json
+import ReadWrite
+import os
 
 
 class AudioChatClientGUI:
     def __init__(self, uri, config):
+        self.config = config
         self.uri = uri
         self.audio_format = pyaudio.paInt16
         self.channels = config["channel"]
@@ -32,6 +35,9 @@ class AudioChatClientGUI:
         self.record_stream = None
         self.play_stream = None
         self.is_muted = False
+
+        self.audio = ReadWrite.Audio()
+        self.audio.loadConfig(config["rate"], config["channel"], bytesPerSample=2)
 
         self._setup_gui()
 
@@ -59,6 +65,9 @@ class AudioChatClientGUI:
 
         self.mute_button = tk.Button(self.root, text="Mute", command=self.toggle_mute)
         self.mute_button.pack(pady=5)
+
+        self.save_recording_button = tk.Button(self.root, text="Save Recording", command=self.save_recording)
+        self.save_recording_button.pack(pady=5)
 
         self.video_frame = tk.Frame(self.root, width=200, height=150)
         self.video_frame.pack(pady=10)
@@ -135,13 +144,13 @@ class AudioChatClientGUI:
     #         self.record_stream.stop_stream()
     #         self.record_stream.close()
     #         self.record_stream = None
-
+        
     #     if hasattr(self, 'play_stream') and self.play_stream is not None:
     #         self.play_stream.stop_stream()
     #         self.play_stream.close()
     #         self.play_stream = None
     #     self.pyaudio_instance.terminate()
-
+        
     #     self.update_ui_after_disconnect()
 
     # def update_ui_after_disconnect(self):
@@ -196,26 +205,37 @@ class AudioChatClientGUI:
         try:
             while True:
                 if not self.is_muted:
-                    data = self.record_stream.read(self.chunk_size, exception_on_overflow=False)
+                    # Get the running event loop
+                    loop = asyncio.get_event_loop()
+                    data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
                     await websocket.send(data)
-                    await asyncio.sleep(0)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
-                    time.sleep(self.chunk_size / self.rate)
+                    await asyncio.sleep(self.chunk_size / self.rate)
                     mute_message = 'MUTE'
                     await websocket.send(mute_message)
-                    await asyncio.sleep(0)
+                # Give the control back
+                await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
 
     async def receive_and_play(self, websocket):
         try:
             while True:
+                #message is chunks_without_self + chunks_with_self
                 message = await websocket.recv()
+                size = len(message)
+                chunks_without_self = message[0: size//2]
+                chunks_with_self = message[size//2: size]
+                self.audio.appendData(chunks_with_self, self.config["rate"], self.config["channel"], 2)
                 # run the stream.write in a separate thread to avoid blocking
-                await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, message)
+                await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, chunks_without_self)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
+
+    def save_recording(self):
+        self.audio.write(os.path.join(os.getcwd(), self.config["record_path"]))
+        print("saved")
     async def receive_and_play_video(self, websocket):
         try:
             while True:
@@ -315,7 +335,7 @@ class AudioChatClientGUI:
             print(f"Connection closed: {e}")
         # finally:
         #     await self.disconnect()
-
+        
     async def disconnect(self):
         if self.send_task is not None:
             self.send_task.cancel()

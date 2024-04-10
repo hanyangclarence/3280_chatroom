@@ -12,4 +12,6 @@ config = {
 
     "amplification_factor": 5,
     "my_name": "aaaa"
+    
+    "record_path": "last_recording.wav"
 }

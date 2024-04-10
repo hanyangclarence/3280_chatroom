@@ -116,6 +116,7 @@ class ChatServer:
                         while not self.audio_buffers[room_name][websocket].empty():
                             self.audio_buffers[room_name][websocket].get_nowait()
                         self.print_status()
+                await asyncio.sleep(0)
         finally:
             if websocket in self.rooms[room_name]:
                 self.rooms[room_name].remove(websocket)
@@ -185,15 +186,17 @@ class ChatServer:
                         audio_chunks[client] = [buffer.get_nowait() for _ in range(self.max_buffer_size)]
 
                 # broadcast the audio chunks to all clients in the room, including the muted clients
+                mixed_chunk_with_self = self.mix_audio({k: v for k, v in audio_chunks.items()})
                 for client in self.rooms[room_name]:
                     print(f'Room {room_name}, Client: {client.remote_address} received from', end=' ')
                     # mix the audio chunks except the client's own audio
                     mixed_chunk = self.mix_audio({k: v for k, v in audio_chunks.items() if k != client})
 
+                    #if everyone else is muted, still receive empty chunk
                     if mixed_chunk is None:
-                        continue
+                        mixed_chunk = b'\x00' * self.audio_chunk_size
 
-                    await client.send(mixed_chunk)
+                    await client.send(mixed_chunk+mixed_chunk_with_self)
             except Exception as e:
                 print(f'error found: {e}', file=sys.stderr)
 
