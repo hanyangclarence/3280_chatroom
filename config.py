@@ -11,7 +11,7 @@ config = {
     "max_buffer_size": 8,
 
     "amplification_factor": 5,
-    "my_name": "aaaa"
+    "my_name": "aaaa",
     
     "record_path": "last_recording.wav"
 }

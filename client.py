@@ -293,7 +293,7 @@ class AudioChatClientGUI:
             ret, frame = self.capture.read()
             if not ret:
                 break
-            frame = cv2.resize(frame, (40, 30))
+            frame = cv2.resize(frame, (200, 150))
             # Here you would need to encode the frame using a codec like H.264
             _, buffer = cv2.imencode('.jpg', frame)
             after_read_time = time.time()
