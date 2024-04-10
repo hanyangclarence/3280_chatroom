@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 from PIL import Image, ImageTk
 import json
+import librosa
 
 
 class AudioChatClientGUI:
@@ -51,6 +52,13 @@ class AudioChatClientGUI:
 
         self.delete_room_button = tk.Button(self.root, text="Delete Selected Room", command=self.delete_selected_room)
         self.delete_room_button.pack(pady=5)
+
+        title_label_1 = tk.Label(self.root, text="Adjust Pitch", font=("Arial", 12, "bold"))
+        title_label_1.pack()
+
+        self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
+        self.n_steps.pack()
+        self.n_steps.set(0.0)
 
         # Video frame
         self.video_frame = tk.Frame(self.root, width=200, height=150)
@@ -185,6 +193,9 @@ class AudioChatClientGUI:
                 before_read_time = time.time()
                 data = stream.read(self.chunk_size, exception_on_overflow=False)
                 after_read_time = time.time()
+                n_steps = self.n_steps.get()
+                if n_steps != 0:
+                    data = self.change_pitch(data, n_steps)
                 await websocket.send(b"AUDIO" + data)
                 after_send_time = time.time()
                 print(f'data: {data[:6]}, read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
@@ -279,6 +290,29 @@ class AudioChatClientGUI:
             label = tk.Label(self.video_frame)
             label.pack(side="left", padx=10)
             self.client_video_labels[client_id] = label
+    def change_pitch(self, frames, n_steps):
+        arr = np.frombuffer(frames, dtype=np.int16)
+        y = arr.astype(np.float32)
+        y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
+        sr = self.rate
+        original_length = len(y)
+        try:
+            def pitch_interp(y, sr, n_steps):
+                n = len(y)
+                factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
+                y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
+                return y_shifted
+            y_shifted = pitch_interp(y, sr, n_steps)
+
+            # Convert back to int16
+            y_shifted_int = y_shifted.astype(np.int16)
+
+            # Splitting the shifted audio into frames
+            bytes_arr = y_shifted_int.tobytes()
+            return bytes_arr
+        except Exception as e:
+            print(f"Error occurred during pitch shifting: {str(e)}")
+            return frames
 
 
     async def run(self):
