@@ -12,5 +12,5 @@ config = {
     "max_buffer_size": 8,
 
     "amplification_factor": 5,
-    "my_name": "aaa"
+    "my_name": "aaaa"
 }

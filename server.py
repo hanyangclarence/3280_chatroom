@@ -24,8 +24,8 @@ class ChatServer:
 
         self.max_buffer_size = config["max_buffer_size"]
         self.amplification_factor = config["amplification_factor"]
-        self.socket_name_mapping: Dict[str, (Socket, Socket)] = {}
-   
+        self.socket_name_mapping: Dict[str, Socket] = {}
+
     async def handler(self, websocket: Socket, path):
         message = await websocket.recv()
         try:
@@ -35,11 +35,11 @@ class ChatServer:
                 action = message
         except UnicodeDecodeError:
             print("Received data could not be decoded as UTF-8. It might be binary data.")
-            return  
-        
+            return
+
         if action == "LIST":
             await websocket.send(",".join(self.room_list))
-            return  
+            return
         elif action.startswith("CREATE"):
             room_name = action.split()[1]
             if room_name not in self.rooms:
@@ -48,12 +48,12 @@ class ChatServer:
                 self.audio_buffers[room_name] = {}
                 self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
                 self.video_buffers[room_name] = {}
-                self.video_broadcast_tasks[room_name] = asyncio.create_task(self.broadcast_video(room_name))
+                # self.video_broadcast_tasks[room_name] = asyncio.create_task(self.broadcast_video(room_name))
                 self.room_list.add(room_name)
                 await websocket.send(f"Room {room_name} created.")
             else:
                 await websocket.send(f"Room {room_name} already exists.")
-            return  
+            return
         elif action.startswith("DELETE"):
             room_name = action.split()[1]
             if room_name in self.rooms:
@@ -61,7 +61,7 @@ class ChatServer:
                 await websocket.send(f"Room {room_name} deleted.")
             else:
                 await websocket.send("Room not found.")
-            return  
+            return
         elif action.startswith("LEAVE"):
             room_name = action.split()[1]
             if room_name in self.rooms and websocket in self.rooms[room_name]:
@@ -79,6 +79,7 @@ class ChatServer:
                 print(f"Client disconnected from room: {room_name}.")
         else:
             await self.handle_join2(websocket, message)
+
     async def handle_join(self, websocket: Socket, message: str):
         data = json.loads(message)
         room_name = data['room']
@@ -88,7 +89,7 @@ class ChatServer:
             self.audio_buffers[room_name] = {}
             self.mixing_tasks[room_name] = asyncio.create_task(self.mix_and_broadcast(room_name))
             self.video_buffers[room_name] = {}
-            self.video_broadcast_tasks[room_name] = asyncio.create_task(self.broadcast_video(room_name))
+            # self.video_broadcast_tasks[room_name] = asyncio.create_task(self.broadcast_video(room_name))
             self.room_list.add(room_name)  # Add the room name to the room list
             print(f"Room {room_name} created and added to the room list.")
 
@@ -114,6 +115,9 @@ class ChatServer:
     async def handle_join2(self, websocket: Socket, message: str):
         data = json.loads(message)
         room_name = data['room']
+        client_name = data['user']
+        print(client_name)
+        self.socket_name_mapping[client_name] = websocket
         self.rooms2[room_name].add(websocket)
         self.video_buffers[room_name][websocket] = b''
         print(f"New client connected to {room_name}. Total clients in room: {len(self.rooms[room_name])}")
@@ -121,7 +125,10 @@ class ChatServer:
         try:
             while websocket in self.rooms2[room_name]:
                 message = await websocket.recv()
-                self.video_buffers[room_name][websocket] = message[5:]
+                for socket in self.rooms2[room_name]:
+                    if socket != websocket:
+                        await socket.send(b'V' + client_name.encode('utf-8') + message[5:])
+                # self.video_buffers[room_name][websocket] = message[5:]
 
         finally:
             if websocket in self.rooms[room_name]:
@@ -172,33 +179,34 @@ class ChatServer:
                 # print(f'After broadcast: {time.time()}', file=sys.stderr)
             except Exception as e:
                 print(f'error found in audio: {e}', file=sys.stderr)
+
     async def broadcast_video(self, room_name: str):
         while True:
             # try:
-                # wait until all the buffers in the room exceed the max buffer size
-                all_buffers_full = False
-                while not all_buffers_full:
-                    await asyncio.sleep(0.01)  # sleep for a short duration to avoid busy waiting
-                    all_buffers_full = all(
-                        (buffer != b'') for buffer in self.video_buffers[room_name].values()
-                    )
+            # wait until all the buffers in the room exceed the max buffer size
+            all_buffers_full = False
+            while not all_buffers_full:
+                await asyncio.sleep(0.01)  # sleep for a short duration to avoid busy waiting
+                all_buffers_full = all(
+                    (buffer != b'') for buffer in self.video_buffers[room_name].values()
+                )
 
-                # load self.max_buffer_size of video chunks from the buffers
-                video_frame: Dict[Socket, bytes] = {}
-                for client, buffer in self.video_buffers[room_name].items():
-                    video_frame[client] = buffer
+            # load self.max_buffer_size of video chunks from the buffers
+            video_frame: Dict[Socket, bytes] = {}
+            for client, buffer in self.video_buffers[room_name].items():
+                video_frame[client] = buffer
 
-                # broadcast the audio chunks to all clients in the room
-                for client in self.rooms2[room_name]:
-                    counter = 0
-                    for socket, data in video_frame.items():
-                        if socket != client:
-                            print("here2")
-                            await client.send(b'V'+counter.to_bytes(4, byteorder='big')+data)
-                            counter += 1
-                # print(f'After broadcast: {time.time()}', file=sys.stderr)
-            # except Exception as e:
-                # print(f'error found in video: {e}', file=sys.stderr)
+            # broadcast the audio chunks to all clients in the room
+            for client in self.rooms2[room_name]:
+                counter = 0
+                for socket, data in video_frame.items():
+                    if socket != client:
+                        print("here2")
+                        await client.send(b'V' + counter.to_bytes(4, byteorder='big') + data)
+                        counter += 1
+            # print(f'After broadcast: {time.time()}', file=sys.stderr)
+        # except Exception as e:
+        # print(f'error found in video: {e}', file=sys.stderr)
 
     def mix_audio(self, audio_chunks: Dict[Socket, List[bytes]]) -> Optional[bytes]:
         if len(audio_chunks) == 0:
@@ -235,6 +243,7 @@ class ChatServer:
         print(f"Server2 started at ws://{host}:{port}")
         await server.wait_closed()
 
+
 async def main():
     server = ChatServer(config)
     # 使用 asyncio.gather 同时启动两个 WebSocket 服务器
@@ -242,6 +251,7 @@ async def main():
         server.run(config['ip'], config['port']),
         server.run2(config['ip'], 5679)
     )
+
 
 if __name__ == "__main__":
     # 运行主函数以启动服务器

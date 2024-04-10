@@ -214,11 +214,13 @@ class AudioChatClientGUI:
                 after_receive_time = time.time()
                 client_id = message[1:5]  # 前4个字节是客户端ID
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
+
                 cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 pil_image = Image.fromarray(cv_image)
                 image_tk = ImageTk.PhotoImage(image=pil_image)
                 # cv2.imshow('Receiver', frame)
                 # 如果这是新的客户端，创建一个新的标签
+                print("here",client_id)
                 if client_id not in self.client_video_labels:
                     self.add_video_label(client_id)
 
@@ -227,11 +229,25 @@ class AudioChatClientGUI:
                 label.imgtk = image_tk
                 label.configure(image=image_tk)
                 after_play_time = time.time()
-                print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
-                await asyncio.sleep(0.01)
+
+                # self.root.after(0,self.update_client_video,client_id,frame)
+                # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
+                # await asyncio.sleep(0.01)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play video process: {e}")
+    def update_client_video(self,client_id,frame):
+        cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(cv_image)
+        image_tk = ImageTk.PhotoImage(image=pil_image)
+        # cv2.imshow('Receiver', frame)
+        # 如果这是新的客户端，创建一个新的标签
+        if client_id not in self.client_video_labels:
+            self.add_video_label(client_id)
 
+        # 更新对应客户端的视频标签
+        label = self.client_video_labels[client_id]
+        label.imgtk = image_tk
+        label.configure(image=image_tk)
     async def record_and_send_video(self, websocket):
         while self.capture.isOpened():
             print("here111")
