@@ -149,8 +149,9 @@ class ChatServer:
                     # mix the audio chunks except the client's own audio
                     mixed_chunk = self.mix_audio({k: v for k, v in audio_chunks.items() if k != client})
 
+                    #if everyone else is muted, still receive empty chunk
                     if mixed_chunk is None:
-                        continue
+                        mixed_chunk = b'\x00' * self.audio_chunk_size
 
                     await client.send(mixed_chunk+mixed_chunk_with_self)
             except Exception as e:
