@@ -221,6 +221,7 @@ class AudioChatClientGUI:
             while True:
                 before_receive_time = time.time()
                 message = await websocket.recv()
+                print("video received:",message[:10])
                 after_receive_time = time.time()
                 client_id = message[1:5]  # 前4个字节是客户端ID
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
