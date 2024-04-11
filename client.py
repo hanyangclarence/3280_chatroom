@@ -70,12 +70,12 @@ class AudioChatClientGUI:
         self.save_recording_button = tk.Button(self.root, text="Save Recording", command=self.save_recording)
         self.save_recording_button.pack(pady=5)
 
-        title_label_1 = tk.Label(self.root, text="Adjust Pitch", font=("Arial", 12, "bold"))
-        title_label_1.pack()
-
-        self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
-        self.n_steps.pack()
-        self.n_steps.set(0.0)
+        # title_label_1 = tk.Label(self.root, text="Adjust Pitch", font=("Arial", 12, "bold"))
+        # title_label_1.pack()
+        #
+        # self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
+        # self.n_steps.pack()
+        # self.n_steps.set(0.0)
 
         self.video_frame = tk.Frame(self.root, width=200, height=150)
         self.video_frame.pack(pady=10)
@@ -236,29 +236,29 @@ class AudioChatClientGUI:
     #
     #     return np.real(stretched_frames).astype('int16')
 
-    def pitch_interp(y, sr, n_steps):
-        n = len(y)
-        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
-        y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
-        return y_shifted
-    def change_pitch(self, frames, n_steps):
-        arr = np.frombuffer(frames, dtype=np.int16)
-        y = arr.astype(np.float32)
-        y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
-        sr = self.rate
-        original_length = len(y)
-        try:
-            y_shifted = self.pitch_interp(y, sr, n_steps)
-
-            # Convert back to int16
-            y_shifted_int = y_shifted.astype(np.int16)
-
-            # Splitting the shifted audio into frames
-            bytes_arr = y_shifted_int.tobytes()
-            return bytes_arr
-        except Exception as e:
-            print(f"Error occurred during pitch shifting: {str(e)}")
-            return frames
+    # def pitch_interp(y, sr, n_steps):
+    #     n = len(y)
+    #     factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
+    #     y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
+    #     return y_shifted
+    # def change_pitch(self, frames, n_steps):
+    #     arr = np.frombuffer(frames, dtype=np.int16)
+    #     y = arr.astype(np.float32)
+    #     y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
+    #     sr = self.rate
+    #     original_length = len(y)
+    #     try:
+    #         y_shifted = self.pitch_interp(y, sr, n_steps)
+    #
+    #         # Convert back to int16
+    #         y_shifted_int = y_shifted.astype(np.int16)
+    #
+    #         # Splitting the shifted audio into frames
+    #         bytes_arr = y_shifted_int.tobytes()
+    #         return bytes_arr
+    #     except Exception as e:
+    #         print(f"Error occurred during pitch shifting: {str(e)}")
+    #         return frames
     async def record_and_send(self, websocket):
         try:
             while True:
@@ -266,9 +266,9 @@ class AudioChatClientGUI:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    n_steps = self.n_steps.get()
-                    if n_steps != 0:
-                        data = await self.change_pitch(data, n_steps)
+                    # n_steps = self.n_steps.get()
+                    # if n_steps != 0:
+                    #     data = await self.change_pitch(data, n_steps)
                     await websocket.send(data)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
