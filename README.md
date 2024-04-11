@@ -35,8 +35,8 @@ You can chat in the room, click the "Mute" key to mute yourself, at this time ot
 Step 6: Click the Botton "Unmute"
 After clicking the "Unmute" button, your voice message is sent to the server side, and other clients in the same room can hear your voice again.
 
-Step 7: Click the Botton "Save Recording"
-At any point after entering the room, you can click the "Save Recording" button, and it will generate an audio file in the same folder as server.py and client.py, Recording all the sounds from the time you connect to the room until you click the "Save Recording" button. Click Play it and you can relive your voice chat in this chat room!
+Step 7: Start and save recording
+Click "Start Recording" to start recording audio. Click "End recording" and the record will be saved to local file named last_recording.wav
 
 Step 8: Click the Botton "Disconnect from Selected Room"
 If you want to Disconnect from the current Room, you can simply click the "Disconnect from Selected Room" button. At this point, the Disconnected state at the top will also reappear in red, informing you that you have successfully exited the current room.

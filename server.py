@@ -106,7 +106,7 @@ class ChatServer:
                     if websocket in self.muted_clients[room_name]:
                         # previously the client is muted, then unmute the client
                         self.remove_client_from_mutelist(room_name, websocket)
-                        self.print_status()
+                        #self.print_status()
                     self.audio_buffers[room_name][websocket].put_nowait(audio_chunk)
                 else:
                     assert audio_chunk == 'MUTE', f"Invalid message received: {audio_chunk}, {type(audio_chunk)}"
@@ -116,7 +116,7 @@ class ChatServer:
                         # clean up the corresponding audio buffer
                         while not self.audio_buffers[room_name][websocket].empty():
                             self.audio_buffers[room_name][websocket].get_nowait()
-                        self.print_status()
+                        #self.print_status()
                 await asyncio.sleep(0)
         finally:
             if websocket in self.rooms[room_name]:
@@ -200,10 +200,10 @@ class ChatServer:
                         audio_chunks[client] = np.frombuffer(audio_chunks[client], dtype=np.int16)
                         # convert to int32 to avoid overflow
                         audio_chunks[client] = audio_chunks[client].astype(np.int32)
-                        print(f'!!!Client: {client.remote_address}, audio_chunks: {audio_chunks[client].shape}')
+                        #print(f'!!!Client: {client.remote_address}, audio_chunks: {audio_chunks[client].shape}')
 
                     mixed_chunk = np.sum([audio_chunks[client] for client in audio_chunks.keys()], axis=0)
-                    print(f'!!!Mixed chunk with self: {mixed_chunk.shape}, {np.sum(mixed_chunk)}')
+                    #print(f'!!!Mixed chunk with self: {mixed_chunk.shape}, {np.sum(mixed_chunk)}')
 
                     # amplify the mixed data
                     mixed_chunk_byte = np.clip(mixed_chunk * self.amplification_factor, -32768, 32767).astype(np.int16).tobytes()
@@ -214,9 +214,11 @@ class ChatServer:
                             # remove the client's own audio chunk from the mixed chunk
                             mixed_chunk_without_self = mixed_chunk - audio_chunks[client]
                         if np.sum(mixed_chunk_without_self) == 0:
-                            print(f'Send empty audio to Client: {client.remote_address}')
+                            pass
+                            #print(f'Send empty audio to Client: {client.remote_address}')
                         else:
-                            print(f'Send non-empty audio to Client: {client.remote_address}')
+                            pass
+                            #print(f'Send non-empty audio to Client: {client.remote_address}')
                         # amplify the mixed data
                         mixed_chunk_without_self_byte = np.clip(mixed_chunk_without_self * self.amplification_factor, -32768, 32767).astype(np.int16).tobytes()
 
@@ -240,12 +242,12 @@ class ChatServer:
 
     def mix_audio(self, audio_chunks: Dict[Socket, List[bytes]]) -> Optional[bytes]:
         if len(audio_chunks) == 0:
-            print(f'None')
+            #print(f'None')
             return None
 
-        for client in audio_chunks.keys():
-            print(f'{client.remote_address}', end=' ')
-        print()
+        #for client in audio_chunks.keys():
+            #print(f'{client.remote_address}', end=' ')
+        #print()
 
         # Mix the audio chunks by calculating the mean of each chunk over all clients
         audio_chunks: List[List[bytes]] = list(audio_chunks.values())

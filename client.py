@@ -36,6 +36,7 @@ class AudioChatClientGUI:
         self.record_stream = None
         self.play_stream = None
         self.is_muted = False
+        self.is_recording = False
 
         self.audio = ReadWrite.Audio()
         self.audio.loadConfig(config["rate"], config["channel"], bytesPerSample=2)
@@ -50,34 +51,45 @@ class AudioChatClientGUI:
         self.save_recording_button.pack_forget()
 
     def _setup_gui(self):
+        self.root.geometry("640x720")
         self.status_label = tk.Label(self.root, text="Disconnected", fg="red")
-        self.status_label.pack(pady=10)
+        self.status_label.pack(pady=5)
+        #self.status_label.place(x=100,y=10)
 
         self.create_room_button = tk.Button(self.root, text="Create Chat Room", command=self.create_room)
-        self.create_room_button.pack(pady=10)
+        self.create_room_button.pack(pady=5)
+        #self.create_room_button.place(x=100,y=60)
 
         self.list_rooms_button = tk.Button(self.root, text="List Chat Rooms", command=self.list_rooms)
-        self.list_rooms_button.pack(pady=10)
+        self.list_rooms_button.pack(pady=5)
+        #self.list_rooms_button.place(x=100,y=110)
 
         self.rooms_listbox = tk.Listbox(self.root)
-        self.rooms_listbox.pack(pady=10)
+        self.rooms_listbox.pack(pady=5)
+        #self.rooms_listbox.pack(side='left',padx=100)
+        #self.list_rooms_button.place(x=200,y=110)
 
         self.connect_button = tk.Button(self.root, text="Connect to Selected Room",
                                         command=self.connect_to_selected_room)
         self.connect_button.pack(pady=5)
+        #self.connect_button.place(x=100,y=400)
 
         self.disconnect_button = tk.Button(self.root, text="Disconnect from Selected Room",
                                            command=self.disconnect_from_room)
         self.disconnect_button.pack(pady=5)
+        #self.disconnect_button.place(x=100,y=450)
 
         self.delete_room_button = tk.Button(self.root, text="Delete Selected Room", command=self.delete_selected_room)
         self.delete_room_button.pack(pady=5)
+        #self.delete_room_button.place(x=100,y=500)
 
         self.mute_button = tk.Button(self.root, text="Mute", command=self.toggle_mute)
-        self.mute_button.pack(pady=5)
+        #self.mute_button.pack(pady=5)
+        #self.mute_button.place(x=600,y=60)
 
-        self.save_recording_button = tk.Button(self.root, text="Save Recording", command=self.save_recording)
-        self.save_recording_button.pack(pady=5)
+        self.save_recording_button = tk.Button(self.root, text="Start Recording", command=self.save_recording)
+        #self.save_recording_button.pack(pady=5)
+        #self.save_recording_button.place(x=600,y=110)
 
         title_label_1 = tk.Label(self.root, text="Adjust Pitch", font=("Arial", 12, "bold"))
         title_label_1.pack()
@@ -97,8 +109,8 @@ class AudioChatClientGUI:
         self.capture = cv2.VideoCapture(0)
 
     def show_control_buttons(self):
-        self.mute_button.pack(pady=5)
-        self.save_recording_button.pack(pady=5)
+        self.mute_button.place(x=500,y=60)
+        self.save_recording_button.place(x=500,y=110)
 
     def hide_control_buttons(self):
         self.mute_button.pack_forget()
@@ -256,11 +268,11 @@ class AudioChatClientGUI:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    print("before:",len(data))
+                    #print("before:",len(data))
                     n_steps = self.n_steps.get()
                     if n_steps != 0:
                         data = self.change_pitch(data, self.rate ,n_steps)
-                        print("after:",len(data))
+                        #print("after:",len(data))
                     await websocket.send(data)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
@@ -300,8 +312,9 @@ class AudioChatClientGUI:
                 message = await websocket.recv()
                 chunks_with_self = message[:self.audio_chunk_size]
                 chunks_without_self = message[self.audio_chunk_size:]
-                print(f'chunks_with_self: {len(chunks_with_self)}, chunks_without_self: {len(chunks_without_self)}')
-                self.audio.appendData(chunks_with_self, self.config["rate"], self.config["channel"], 2)
+                #print(f'chunks_with_self: {len(chunks_with_self)}, chunks_without_self: {len(chunks_without_self)}')
+                if self.is_recording==True:
+                    self.audio.appendData(chunks_with_self, self.config["rate"], self.config["channel"], 2)
                 if len(chunks_without_self) > 0:
                     # run the stream.write in a separate thread to avoid blocking
                     await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, chunks_without_self)
@@ -311,15 +324,23 @@ class AudioChatClientGUI:
             print(f"Connection closed during receive and play process: {e}")
 
     def save_recording(self):
-        self.audio.write(os.path.join(os.getcwd(), self.config["record_path"]))
-        print("saved")
+        if self.is_recording == True:
+            self.audio.write(os.path.join(os.getcwd(), self.config["record_path"]))
+            self.audio = ReadWrite.Audio()
+            self.audio.loadConfig(config["rate"], config["channel"], bytesPerSample=2)
+            print("saved")
+            self.is_recording = False
+            self.save_recording_button.config(text="Start Recording")
+        else:
+            self.is_recording = True
+            self.save_recording_button.config(text="End Recording")
 
     async def receive_and_play_video(self, websocket):
         try:
             while True:
                 before_receive_time = time.time()
                 message = await websocket.recv()
-                print("video received:", message[:10])
+                #print("video received:", message[:10])
                 after_receive_time = time.time()
                 client_id = message[1:5]  # 前4个字节是客户端ID
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
@@ -367,7 +388,7 @@ class AudioChatClientGUI:
 
     async def record_and_send_video(self, websocket):
         while self.capture.isOpened():
-            print("here111")
+            #print("here111")
             before_read_time = time.time()
             ret, frame = self.capture.read()
             if not ret:
@@ -378,7 +399,7 @@ class AudioChatClientGUI:
             after_read_time = time.time()
             bytes_buffer = buffer.tobytes()
             image_size = len(bytes_buffer)
-            print(image_size)
+            #print(image_size)
             await websocket.send(b"VIDEO" + bytes_buffer)
             after_send_time = time.time()
             frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -389,8 +410,8 @@ class AudioChatClientGUI:
 
             self.mylbl.imgtk = imgtk
             self.mylbl.configure(image=imgtk)
-            print(
-                f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
+            #print(
+            #    f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding
             await asyncio.sleep(0.033)  # Roughly 30 frames per second
 
