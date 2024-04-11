@@ -231,8 +231,9 @@ class AudioChatClientGUI:
         factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
         y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
         return y_shifted
-    async def change_pitch(self, frames, n_steps):
-        y = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
+    def change_pitch(self, frames, n_steps):
+        print("here1")
+        y = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)), frames)
         sr = self.rate
         original_length = len(y.tobytes())
         print("length after changing speed",original_length)
@@ -253,11 +254,11 @@ class AudioChatClientGUI:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    #print("before:",len(data))
+                    print("before:",len(data))
                     n_steps = self.n_steps.get()
                     if n_steps != 0:
-                        data = self.change_pitch(data, self.rate ,n_steps)
-                        #print("after:",len(data))
+                        data = self.change_pitch(data,n_steps)
+                        print("after:",len(data))
                     await websocket.send(data)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
