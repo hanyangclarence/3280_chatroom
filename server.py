@@ -28,6 +28,7 @@ class ChatServer:
 
         # set self.audio_chunk_size to the size of each audio chunk in bytes
         self.audio_chunk_size = config['chunk_size'] * config['channel'] * 2  # 2 bytes per sample
+        self.chunk_duration = config['chunk_size'] / config['rate']
         self.max_buffer_size = config["max_buffer_size"]
         self.amplification_factor = config["amplification_factor"]
    
@@ -174,9 +175,7 @@ class ChatServer:
                             for usr, buffer in self.audio_buffers[room_name].items()
                             if usr not in self.muted_clients[room_name]
                         ):
-                            if len(self.rooms[room_name]) != len(self.muted_clients[room_name]):
-                                # ensure that there is at least one non-muted client in the room
-                                break
+                            break
                     await asyncio.sleep(0.01)
 
                 # load self.max_buffer_size of audio chunks from the buffers, except the muted clients
@@ -185,18 +184,43 @@ class ChatServer:
                     if client not in self.muted_clients[room_name]:
                         audio_chunks[client] = [buffer.get_nowait() for _ in range(self.max_buffer_size)]
 
-                # broadcast the audio chunks to all clients in the room, including the muted clients
-                mixed_chunk_with_self = self.mix_audio({k: v for k, v in audio_chunks.items()})
-                for client in self.rooms[room_name]:
-                    print(f'Room {room_name}, Client: {client.remote_address} received from', end=' ')
-                    # mix the audio chunks except the client's own audio
-                    mixed_chunk = self.mix_audio({k: v for k, v in audio_chunks.items() if k != client})
+                if len(audio_chunks) == 0:
+                    # everyone is muted, no need to mix audio
+                    # send empty audio chunks to all clients
+                    print(f'Everyone is muted in room: {room_name}')
+                    for client in self.rooms[room_name]:
+                        await client.send(b'\x00' * self.audio_chunk_size)
+                    await asyncio.sleep(self.chunk_duration)
+                else:
+                    # broadcast the audio chunks to all clients in the room, including the muted clients
+                    # joint list of bytes to a byte array for each client
+                    for client in audio_chunks.keys():
+                        audio_chunks[client]: Dict[Socket, bytes] = b''.join(audio_chunks[client])
+                        # convert bytes to numpy array
+                        audio_chunks[client] = np.frombuffer(audio_chunks[client], dtype=np.int16)
+                        # convert to int32 to avoid overflow
+                        audio_chunks[client] = audio_chunks[client].astype(np.int32)
+                        print(f'!!!Client: {client.remote_address}, audio_chunks: {audio_chunks[client].shape}')
 
-                    #if everyone else is muted, still receive empty chunk
-                    if mixed_chunk is None:
-                        mixed_chunk = b'\x00' * self.audio_chunk_size
+                    mixed_chunk = np.sum([audio_chunks[client] for client in audio_chunks.keys()], axis=0)
+                    print(f'!!!Mixed chunk with self: {mixed_chunk.shape}, {np.sum(mixed_chunk)}')
 
-                    await client.send(mixed_chunk+mixed_chunk_with_self)
+                    # amplify the mixed data
+                    mixed_chunk_byte = np.clip(mixed_chunk * self.amplification_factor, -32768, 32767).astype(np.int16).tobytes()
+
+                    for client in self.rooms[room_name]:
+                        mixed_chunk_without_self = mixed_chunk
+                        if client in audio_chunks.keys():
+                            # remove the client's own audio chunk from the mixed chunk
+                            mixed_chunk_without_self = mixed_chunk - audio_chunks[client]
+                        if np.sum(mixed_chunk_without_self) == 0:
+                            print(f'Send empty audio to Client: {client.remote_address}')
+                        else:
+                            print(f'Send non-empty audio to Client: {client.remote_address}')
+                        # amplify the mixed data
+                        mixed_chunk_without_self_byte = np.clip(mixed_chunk_without_self * self.amplification_factor, -32768, 32767).astype(np.int16).tobytes()
+
+                        await client.send(mixed_chunk_byte + mixed_chunk_without_self_byte)
             except Exception as e:
                 print(f'error found: {e}', file=sys.stderr)
 

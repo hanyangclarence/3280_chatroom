@@ -1,7 +1,7 @@
 config = {
     # "ip": "10.13.181.168",
-    "ip": "10.13.147.229",
-    # "ip": "localhost",
+    # "ip": "10.13.147.229",
+    "ip": "localhost",
     "port": 5678,
 
     "channel": 1,

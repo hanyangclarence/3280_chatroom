@@ -40,6 +40,9 @@ class AudioChatClientGUI:
         self.audio = ReadWrite.Audio()
         self.audio.loadConfig(config["rate"], config["channel"], bytesPerSample=2)
 
+        # set self.audio_chunk_size to the size of each audio chunk in bytes
+        self.audio_chunk_size = config['chunk_size'] * config['channel'] * config['max_buffer_size'] * 2  # 2 bytes per sample
+
         self._setup_gui()
 
     def _setup_gui(self):
@@ -244,14 +247,15 @@ class AudioChatClientGUI:
     async def receive_and_play(self, websocket):
         try:
             while True:
-                #message is chunks_without_self + chunks_with_self
+                # message is chunks_without_self + chunks_with_self
                 message = await websocket.recv()
-                size = len(message)
-                chunks_without_self = message[0: size//2]
-                chunks_with_self = message[size//2: size]
+                chunks_with_self = message[:self.audio_chunk_size]
+                chunks_without_self = message[self.audio_chunk_size:]
+                print(f'chunks_with_self: {len(chunks_with_self)}, chunks_without_self: {len(chunks_without_self)}')
                 self.audio.appendData(chunks_with_self, self.config["rate"], self.config["channel"], 2)
-                # run the stream.write in a separate thread to avoid blocking
-                await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, chunks_without_self)
+                if len(chunks_without_self) > 0:
+                    # run the stream.write in a separate thread to avoid blocking
+                    await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, chunks_without_self)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
 
