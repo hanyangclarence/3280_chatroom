@@ -220,7 +220,8 @@ class AudioChatClientGUI:
         y = arr.astype(np.float32)
 
         # Apply pitch shifting
-        y_shifted = self.pitch_shift(y, rate, n_steps)
+        # y_shifted = self.pitch_shift(y, rate, n_steps)
+        y_shifted = librosa.effects.pitch_shift(y, sr=rate, n_steps=n_steps)
 
         # Convert back to int16
         y_shifted_int = y_shifted.astype(np.int16)
