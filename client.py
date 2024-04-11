@@ -45,6 +45,10 @@ class AudioChatClientGUI:
 
         self._setup_gui()
 
+        # Initially hide the mute and save recording buttons
+        self.mute_button.pack_forget()
+        self.save_recording_button.pack_forget()
+
     def _setup_gui(self):
         self.status_label = tk.Label(self.root, text="Disconnected", fg="red")
         self.status_label.pack(pady=10)
@@ -58,10 +62,12 @@ class AudioChatClientGUI:
         self.rooms_listbox = tk.Listbox(self.root)
         self.rooms_listbox.pack(pady=10)
 
-        self.connect_button = tk.Button(self.root, text="Connect to Selected Room", command=self.connect_to_selected_room)
+        self.connect_button = tk.Button(self.root, text="Connect to Selected Room",
+                                        command=self.connect_to_selected_room)
         self.connect_button.pack(pady=5)
 
-        self.disconnect_button = tk.Button(self.root, text="Disconnect from Selected Room", command=self.disconnect_from_room)
+        self.disconnect_button = tk.Button(self.root, text="Disconnect from Selected Room",
+                                           command=self.disconnect_from_room)
         self.disconnect_button.pack(pady=5)
 
         self.delete_room_button = tk.Button(self.root, text="Delete Selected Room", command=self.delete_selected_room)
@@ -73,12 +79,12 @@ class AudioChatClientGUI:
         self.save_recording_button = tk.Button(self.root, text="Save Recording", command=self.save_recording)
         self.save_recording_button.pack(pady=5)
 
-        # title_label_1 = tk.Label(self.root, text="Adjust Pitch", font=("Arial", 12, "bold"))
-        # title_label_1.pack()
-        #
-        # self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
-        # self.n_steps.pack()
-        # self.n_steps.set(0.0)
+        title_label_1 = tk.Label(self.root, text="Adjust Pitch", font=("Arial", 12, "bold"))
+        title_label_1.pack()
+
+        self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
+        self.n_steps.pack()
+        self.n_steps.set(0.0)
 
         self.video_frame = tk.Frame(self.root, width=200, height=150)
         self.video_frame.pack(pady=10)
@@ -90,6 +96,14 @@ class AudioChatClientGUI:
         # Start video capture
         self.capture = cv2.VideoCapture(0)
 
+    def show_control_buttons(self):
+        self.mute_button.pack(pady=5)
+        self.save_recording_button.pack(pady=5)
+
+    def hide_control_buttons(self):
+        self.mute_button.pack_forget()
+        self.save_recording_button.pack_forget()
+
     def create_room(self):
         room_name = simpledialog.askstring("Input", "Enter the chat room name:", parent=self.root)
         if room_name:
@@ -99,6 +113,7 @@ class AudioChatClientGUI:
                     response = await websocket.recv()
                     messagebox.showinfo("Info", response)
                     self.list_rooms()
+
             Thread(target=lambda: asyncio.run(create_room_async()), daemon=True).start()
 
     def list_rooms(self):
@@ -126,10 +141,11 @@ class AudioChatClientGUI:
         if selection:
             self.chat_room = self.rooms_listbox.get(selection[0])
             self.status_label.config(text="Connected to " + self.chat_room, fg="green")
+            self.show_control_buttons()
             Thread(target=self.run_client, daemon=True).start()
         else:
             messagebox.showerror("Error", "Please select a room first")
-    
+
     def delete_selected_room(self):
         selection = self.rooms_listbox.curselection()
         if selection:
@@ -173,56 +189,65 @@ class AudioChatClientGUI:
 
         return record_stream, play_stream
 
-    # def audio_stretch(self, frames, stretch_factor, window_len, hop_distance):
-    #     # Initialize phase array and window function
-    #     initial_phase = np.zeros(window_len)
-    #     window = np.hanning(window_len)
-    #     stretched_frames = np.zeros(int(len(frames) / stretch_factor + window_len), dtype=np.complex128)
-    #
-    #     for idx in np.arange(0, len(frames) - (window_len + hop_distance), int(round(hop_distance * stretch_factor))):
-    #         # Extract two overlapping segments
-    #         segment_one = frames[int(idx): int(idx + window_len)]
-    #         segment_two = frames[int(idx + hop_distance): int(idx + window_len + hop_distance)]
-    #
-    #         # FFT and phase manipulation
-    #         fft_one = np.fft.fft(window * segment_one)
-    #         fft_two = np.fft.fft(window * segment_two)
-    #         safe_divisor = 1e-10  # To avoid division by zero
-    #         initial_phase += np.angle(fft_two / (fft_one + safe_divisor)) % (2 * np.pi)
-    #         rephased_segment = np.fft.ifft(np.abs(fft_two) * np.exp(1j * initial_phase))
-    #
-    #         # Accumulate the processed segment
-    #         result_idx = int(idx / stretch_factor)
-    #         stretched_frames[result_idx: result_idx + window_len] += window * rephased_segment
-    #
-    #     # Normalize to 16-bit range
-    #     stretched_frames = (2**(16-4) * stretched_frames / np.max(np.abs(stretched_frames)))
-    #
-    #     return np.real(stretched_frames).astype('int16')
+    def pitch_shift(self,y, sr, n_steps):
+        # Convert the number of steps to a frequency ratio
+        pitch_ratio = 2 ** (n_steps / 12.0)
 
-    # def pitch_interp(y, sr, n_steps):
-    #     n = len(y)
-    #     factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
-    #     y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
-    #     return y_shifted
-    # def change_pitch(self, frames, n_steps):
-    #     arr = np.frombuffer(frames, dtype=np.int16)
-    #     y = arr.astype(np.float32)
-    #     y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
+        # Determine the length of the output signal
+        output_length = int(len(y) / pitch_ratio)
+
+        # Initialize the output signal
+        y_shifted = np.zeros(output_length)
+
+        # Interpolation factor
+        factor = len(y) / output_length
+
+        # Generate the shifted signal using PSOLA algorithm
+        for i in range(output_length):
+            index = int(i * factor)
+            frac = i * factor - index
+            y_shifted[i] = (1 - frac) * y[index] + frac * y[index + 1]
+
+        return y_shifted.astype(np.float32)
+
+    # Example usage:
+    # frames: input audio signal
+    # rate: sample rate of the audio signal
+    # n_steps: number of steps to shift the pitch (positive or negative)
+    def change_pitch(self,frames, rate, n_steps):
+        # Convert input bytes to numpy array
+        arr = np.frombuffer(frames, dtype=np.int16)
+        y = arr.astype(np.float32)
+
+        # Apply pitch shifting
+        y_shifted = self.pitch_shift(y, rate, n_steps)
+
+        # Convert back to int16
+        y_shifted_int = y_shifted.astype(np.int16)
+
+        # Convert back to bytes
+        bytes_arr = y_shifted_int.tobytes()
+
+        return bytes_arr
+
+    # def pitch_shift(self, y, sr, n_steps):
+    #     return librosa.effects.pitch_shift(y, sr, n_steps)
+
+    # async def change_pitch(self, frames, n_steps):
+    #     y = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
     #     sr = self.rate
-    #     original_length = len(y)
     #     try:
-    #         y_shifted = self.pitch_interp(y, sr, n_steps)
-    #
-    #         # Convert back to int16
+    #         y_shifted = self.pitch_shift(y, sr, n_steps)
+    #         if len(y_shifted) > len(y):
+    #             y_shifted = y_shifted[:len(y)]
+    #         elif len(y_shifted) < len(y):
+    #             y_shifted = np.pad(y_shifted, (0, len(y) - len(y_shifted)), 'constant')
     #         y_shifted_int = y_shifted.astype(np.int16)
-    #
-    #         # Splitting the shifted audio into frames
-    #         bytes_arr = y_shifted_int.tobytes()
-    #         return bytes_arr
+    #         return y_shifted_int.tobytes()
     #     except Exception as e:
     #         print(f"Error occurred during pitch shifting: {str(e)}")
     #         return frames
+
     async def record_and_send(self, websocket):
         try:
             while True:
@@ -230,9 +255,11 @@ class AudioChatClientGUI:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    # n_steps = self.n_steps.get()
-                    # if n_steps != 0:
-                    #     data = await self.change_pitch(data, n_steps)
+                    print("before:",len(data))
+                    n_steps = self.n_steps.get()
+                    if n_steps != 0:
+                        data = self.change_pitch(data, self.rate ,n_steps)
+                        print("after:",len(data))
                     await websocket.send(data)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
@@ -243,6 +270,27 @@ class AudioChatClientGUI:
                 await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
+
+    # async def record_and_send(self, websocket):
+    #     try:
+    #         while True:
+    #             if not self.is_muted:
+    #                 loop = asyncio.get_event_loop()
+    #                 data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
+    #                 n_steps = self.n_steps  # 假设这是之前定义的
+    #                 if n_steps != 0:
+    #                     # 确保使用await等待change_pitch完成
+    #                     data = await self.change_pitch(data, n_steps)
+    #                 # 确保data是bytes类型
+    #                 if not isinstance(data, bytes):
+    #                     raise TypeError("change_pitch must return bytes-like object")
+    #                 await websocket.send(data)
+    #             else:
+    #                 await asyncio.sleep(self.chunk_size / self.rate)
+    #                 await websocket.send('MUTE')
+    #             await asyncio.sleep(0)  # 让出控制权
+    #     except websockets.exceptions.ConnectionClosedError as e:
+    #         print(f"Connection closed during record and send process: {e}")
 
     async def receive_and_play(self, websocket):
         try:
@@ -264,12 +312,13 @@ class AudioChatClientGUI:
     def save_recording(self):
         self.audio.write(os.path.join(os.getcwd(), self.config["record_path"]))
         print("saved")
+
     async def receive_and_play_video(self, websocket):
         try:
             while True:
                 before_receive_time = time.time()
                 message = await websocket.recv()
-                print("video received:",message[:10])
+                print("video received:", message[:10])
                 after_receive_time = time.time()
                 client_id = message[1:5]  # 前4个字节是客户端ID
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
@@ -288,12 +337,13 @@ class AudioChatClientGUI:
                 # label.configure(image=image_tk)
                 # after_play_time = time.time()
 
-                self.root.after(0,self.update_client_video,client_id,frame)
+                self.root.after(0, self.update_client_video, client_id, frame)
                 # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
                 # await asyncio.sleep(0.01)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play video process: {e}")
-    def update_client_video(self,client_id,frame):
+
+    def update_client_video(self, client_id, frame):
         cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(cv_image)
         image_tk = ImageTk.PhotoImage(image=pil_image)
@@ -338,14 +388,15 @@ class AudioChatClientGUI:
 
             self.mylbl.imgtk = imgtk
             self.mylbl.configure(image=imgtk)
-            print(f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
+            print(
+                f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding
             await asyncio.sleep(0.033)  # Roughly 30 frames per second
 
     async def run(self):
         try:
             async with websockets.connect(self.uri) as websocket:
-                await websocket.send(self.chat_room) # Use the GUI-input chat room name
+                await websocket.send(self.chat_room)  # Use the GUI-input chat room name
                 if not self.capture.isOpened():
                     print("无法打开摄像头")
                     exit()
@@ -358,13 +409,14 @@ class AudioChatClientGUI:
                 self.mylbl.pack()
                 self.receive_video_task = asyncio.create_task(self.receive_and_play_video(websocket2))
                 await asyncio.gather(self.send_task, self.receive_task, self.send_video_task,
-                                         self.receive_video_task)
+                                     self.receive_video_task)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
         # finally:
         #     await self.disconnect()
-        
+
     async def disconnect(self):
+        self.hide_control_buttons()
         if self.send_task is not None:
             self.send_task.cancel()
             self.send_task = None
