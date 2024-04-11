@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 import json
 import ReadWrite
 import os
-import librosa
+import math
 
 
 class AudioChatClientGUI:
@@ -201,65 +201,50 @@ class AudioChatClientGUI:
 
         return record_stream, play_stream
 
-    def pitch_shift(self,y, sr, n_steps):
-        # Convert the number of steps to a frequency ratio
-        pitch_ratio = 2 ** (n_steps / 12.0)
-
-        # Determine the length of the output signal
-        output_length = int(len(y) / pitch_ratio)
-
-        # Initialize the output signal
-        y_shifted = np.zeros(output_length)
-
-        # Interpolation factor
-        factor = len(y) / output_length
-
-        # Generate the shifted signal using PSOLA algorithm
-        for i in range(output_length):
-            index = int(i * factor)
-            frac = i * factor - index
-            y_shifted[i] = (1 - frac) * y[index] + frac * y[index + 1]
-
-        return y_shifted.astype(np.float32)
-
-    # Example usage:
-    # frames: input audio signal
-    # rate: sample rate of the audio signal
-    # n_steps: number of steps to shift the pitch (positive or negative)
-    def change_pitch(self,frames, rate, n_steps):
-        # Convert input bytes to numpy array
+    def change_speed(self, speed, frames):
         arr = np.frombuffer(frames, dtype=np.int16)
-        y = arr.astype(np.float32)
+        new_length = int(len(arr) / speed)
+        new_arr = np.zeros(new_length, dtype=np.float64)
+        win_size = 1024
+        hs = win_size // 2
+        ha = int(speed * hs)
+        # calculate the Hann window
+        hanning_window = [0] * win_size
+        for i in range(win_size):
+            hanning_window[i] = 0.5 - 0.5 * math.cos(2 * math.pi * i /(win_size - 1))
+        old_pos = 0
+        new_pos = 0
+        delta = 0
+        while old_pos + delta < len(arr) - win_size and new_pos < new_length - win_size:
+            for i in range(win_size):
+                new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
+            # update new_pos and old_pos
+            new_pos += hs
+            old_pos += ha
+        new_arr = new_arr.astype(np.int16)
+        return new_arr
+        # tobytes = new_arr.tobytes()
+        # return tobytes
 
-        # Apply pitch shifting
-        # y_shifted = self.pitch_shift(y, rate, n_steps)
-        y_shifted = librosa.effects.pitch_shift(y, sr=rate, n_steps=n_steps)
+    def pitch_interp(self,y, sr, n_steps):
+        n = len(y)
+        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
+        y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
+        return y_shifted
+    async def change_pitch(self, frames, n_steps):
+        y = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
+        sr = self.rate
+        original_length = len(y.tobytes())
+        print("length after changing speed",original_length)
+        y_shifted = self.pitch_interp(y, sr, n_steps)
 
         # Convert back to int16
         y_shifted_int = y_shifted.astype(np.int16)
 
-        # Convert back to bytes
+        # Splitting the shifted audio into frames
         bytes_arr = y_shifted_int.tobytes()
-
+        print("length after pitch change",len(bytes_arr))
         return bytes_arr
-
-    # def pitch_shift(self, y, sr, n_steps):
-    #     return librosa.effects.pitch_shift(y, sr, n_steps)
-
-    # async def change_pitch(self, frames, n_steps):
-    #     y = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
-    #     sr = self.rate
-    #     try:
-    #         y_shifted = self.pitch_shift(y, sr, n_steps)
-    #         if len(y_shifted) > len(y):
-    #             y_shifted = y_shifted[:len(y)]
-    #         elif len(y_shifted) < len(y):
-    #             y_shifted = np.pad(y_shifted, (0, len(y) - len(y_shifted)), 'constant')
-    #         y_shifted_int = y_shifted.astype(np.int16)
-    #         return y_shifted_int.tobytes()
-    #     except Exception as e:
-    #         print(f"Error occurred during pitch shifting: {str(e)}")
-    #         return frames
 
     async def record_and_send(self, websocket):
         try:
@@ -284,26 +269,6 @@ class AudioChatClientGUI:
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during record and send process: {e}")
 
-    # async def record_and_send(self, websocket):
-    #     try:
-    #         while True:
-    #             if not self.is_muted:
-    #                 loop = asyncio.get_event_loop()
-    #                 data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-    #                 n_steps = self.n_steps  # 假设这是之前定义的
-    #                 if n_steps != 0:
-    #                     # 确保使用await等待change_pitch完成
-    #                     data = await self.change_pitch(data, n_steps)
-    #                 # 确保data是bytes类型
-    #                 if not isinstance(data, bytes):
-    #                     raise TypeError("change_pitch must return bytes-like object")
-    #                 await websocket.send(data)
-    #             else:
-    #                 await asyncio.sleep(self.chunk_size / self.rate)
-    #                 await websocket.send('MUTE')
-    #             await asyncio.sleep(0)  # 让出控制权
-    #     except websockets.exceptions.ConnectionClosedError as e:
-    #         print(f"Connection closed during record and send process: {e}")
 
     async def receive_and_play(self, websocket):
         try:
