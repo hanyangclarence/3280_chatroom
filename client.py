@@ -91,7 +91,7 @@ class AudioChatClientGUI:
         #self.save_recording_button.pack(pady=5)
         #self.save_recording_button.place(x=600,y=110)
 
-        title_label_1 = tk.Label(self.root, text="Adjust Pitch", font=("Arial", 12, "bold"))
+        title_label_1 = tk.Label(self.root, text="Voice Change", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
         self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
