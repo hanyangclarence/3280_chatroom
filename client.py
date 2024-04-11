@@ -256,6 +256,8 @@ class AudioChatClientGUI:
                 if len(chunks_without_self) > 0:
                     # run the stream.write in a separate thread to avoid blocking
                     await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, chunks_without_self)
+                else:
+                    await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
 
