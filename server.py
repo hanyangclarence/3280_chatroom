@@ -102,6 +102,11 @@ class ChatServer:
         try:
             while True:
                 audio_chunk = await websocket.recv()
+                if audio_chunk[:4] == b'FILE':
+                    for client in self.rooms[room_name]:
+                        if client != websocket:
+                            await client.send(audio_chunk)
+                    continue
                 if isinstance(audio_chunk, bytes):
                     if websocket in self.muted_clients[room_name]:
                         # previously the client is muted, then unmute the client
@@ -118,6 +123,8 @@ class ChatServer:
                             self.audio_buffers[room_name][websocket].get_nowait()
                         #self.print_status()
                 await asyncio.sleep(0)
+        except websockets.ConnectionClosed:
+            print("Connection closed by the client.")
         finally:
             if websocket in self.rooms[room_name]:
                 self.rooms[room_name].remove(websocket)
@@ -146,11 +153,11 @@ class ChatServer:
                 for socket in self.rooms2[room_name]:
                     if socket != websocket:
                         await socket.send(b'V' + client_name.encode('utf-8') + message[5:])
+        except websockets.ConnectionClosed:
+            print("Connection closed by the client.")
         finally:
-            if websocket in self.rooms[room_name]:
+            if websocket in self.rooms2[room_name]:
                 self.rooms2[room_name].remove(websocket)
-            if websocket in self.audio_buffers[room_name]:
-                del self.audio_buffers[room_name][websocket]
             if len(self.rooms2[room_name]) == 0:
                 print(f"No clients left in room: {room_name}, but the room remains until explicitly deleted.")
             else:

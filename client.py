@@ -13,6 +13,7 @@ import json
 import ReadWrite
 import os
 import math
+import aiofiles
 
 
 class AudioChatClientGUI:
@@ -32,6 +33,9 @@ class AudioChatClientGUI:
         self.websocket = None
         self.send_task = None
         self.receive_task = None
+        self.send_video_task = None
+        self.receive_video_task = None
+        self.filename_count = 0
 
         self.record_stream = None
         self.play_stream = None
@@ -254,7 +258,7 @@ class AudioChatClientGUI:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    print("before:",len(data))
+                    # print("before:",len(data))
                     n_steps = self.n_steps.get()
                     if n_steps != 0:
                         data = self.change_pitch(data,n_steps)
@@ -276,6 +280,13 @@ class AudioChatClientGUI:
             while True:
                 # message is chunks_without_self + chunks_with_self
                 message = await websocket.recv()
+                if message[:4] == b'FILE':
+                    file_path = os.path.join(os.getcwd(), "other's_recording_",str(self.filename_count),".wav")
+                    async with aiofiles.open(file_path, "rb") as f:
+                    # async with open(os.path.join(os.getcwd(), "other's_recording_",str(self.filename_count),".wav"), "wb") as f:
+                        await f.write(message[5:])
+                        self.filename_count += 1
+                    continue
                 chunks_with_self = message[:self.audio_chunk_size]
                 chunks_without_self = message[self.audio_chunk_size:]
                 #print(f'chunks_with_self: {len(chunks_with_self)}, chunks_without_self: {len(chunks_without_self)}')
@@ -289,9 +300,14 @@ class AudioChatClientGUI:
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
 
+    async def send_file(self):
+        async with aiofiles.open(os.path.join(os.getcwd(), self.config["record_path"]), "rb") as f:
+            content = await f.read()
+            await self.websocket.send(b"FILE"+content)
     def save_recording(self):
         if self.is_recording == True:
             self.audio.write(os.path.join(os.getcwd(), self.config["record_path"]))
+            asyncio.run(self.send_file())
             self.audio = ReadWrite.Audio()
             self.audio.loadConfig(config["rate"], config["channel"], bytesPerSample=2)
             print("saved")
@@ -384,6 +400,7 @@ class AudioChatClientGUI:
     async def run(self):
         try:
             async with websockets.connect(self.uri) as websocket:
+                self.websocket = websocket
                 await websocket.send(self.chat_room)  # Use the GUI-input chat room name
                 if not self.capture.isOpened():
                     print("无法打开摄像头")
@@ -391,13 +408,18 @@ class AudioChatClientGUI:
                 self.record_stream, self.play_stream = self.open_stream()
                 self.send_task = asyncio.create_task(self.record_and_send(websocket))
                 self.receive_task = asyncio.create_task(self.receive_and_play(websocket))
-                websocket2 = await websockets.connect(f"ws://{config['ip']}:5679")
-                await websocket2.send(json.dumps({"room": self.chat_room, "user": self.username, "type": "video"}))
-                self.send_video_task = asyncio.create_task(self.record_and_send_video(websocket2))
+                self.websocket2 = await websockets.connect(f"ws://{config['ip']}:5679")
+                await self.websocket2.send(json.dumps({"room": self.chat_room, "user": self.username, "type": "video"}))
+                self.send_video_task = asyncio.create_task(self.record_and_send_video(self.websocket2))
                 self.mylbl.pack()
-                self.receive_video_task = asyncio.create_task(self.receive_and_play_video(websocket2))
-                await asyncio.gather(self.send_task, self.receive_task, self.send_video_task,
+                self.receive_video_task = asyncio.create_task(self.receive_and_play_video(self.websocket2))
+                try:
+                    await asyncio.gather(self.send_task, self.receive_task, self.send_video_task,
                                      self.receive_video_task)
+                except asyncio.CancelledError:
+                    await self.websocket2.close()
+                    self.websocket2 = None
+                    print("Tasks are cancelled")
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
         # finally:
@@ -411,8 +433,14 @@ class AudioChatClientGUI:
         if self.receive_task is not None:
             self.receive_task.cancel()
             self.receive_task = None
+        if self.send_video_task is not None:
+            self.send_video_task.cancel()
+            self.send_video_task = None
+        if self.receive_video_task is not None:
+            self.receive_video_task.cancel()
+            self.receive_video_task = None
         if self.websocket is not None:
-            await self.websocket.close()
+            # await self.websocket.close()
             self.websocket = None
         self.cleanup_resources()
 
@@ -441,14 +469,23 @@ class AudioChatClientGUI:
     def disconnect_from_room(self):
         asyncio.run(self.disconnect())
 
+    # def run_tkinter_loop(self,loop, root):
+    #     try:
+    #         root.update()
+    #         loop.call_later(0.1, self.run_tkinter_loop, loop, root)
+    #     except tk.TclError:
+    #         # 当窗口被关闭时停止循环
+    #         loop.stop()
     def start_gui(self):
         self.root.mainloop()
+        # self.loop.call_later(0.1, self.run_tkinter_loop, self.loop, self.root)
+        # self.loop.run_forever()
 
 
 if __name__ == "__main__":
-    try:
+    # try:
         uri = f"ws://{config['ip']}:{config['port']}"
         client = AudioChatClientGUI(uri, config=config)
         client.start_gui()
-    except Exception as e:
-        print(f"Unhandled exception: {e}")
+    # except Exception as e:
+    #     print(f"Unhandled exception: {e}")
