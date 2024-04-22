@@ -469,17 +469,8 @@ class AudioChatClientGUI:
     def disconnect_from_room(self):
         asyncio.run(self.disconnect())
 
-    # def run_tkinter_loop(self,loop, root):
-    #     try:
-    #         root.update()
-    #         loop.call_later(0.1, self.run_tkinter_loop, loop, root)
-    #     except tk.TclError:
-    #         # 当窗口被关闭时停止循环
-    #         loop.stop()
     def start_gui(self):
         self.root.mainloop()
-        # self.loop.call_later(0.1, self.run_tkinter_loop, self.loop, self.root)
-        # self.loop.run_forever()
 
 
 if __name__ == "__main__":
