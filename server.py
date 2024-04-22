@@ -147,10 +147,8 @@ class ChatServer:
                     if socket != websocket:
                         await socket.send(b'V' + client_name.encode('utf-8') + message[5:])
         finally:
-            if websocket in self.rooms[room_name]:
+            if websocket in self.rooms2[room_name]:
                 self.rooms2[room_name].remove(websocket)
-            if websocket in self.audio_buffers[room_name]:
-                del self.audio_buffers[room_name][websocket]
             if len(self.rooms2[room_name]) == 0:
                 print(f"No clients left in room: {room_name}, but the room remains until explicitly deleted.")
             else:
