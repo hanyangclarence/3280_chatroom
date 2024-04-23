@@ -146,7 +146,7 @@ class ChatServer:
             while websocket in self.rooms2[room_name]:
                 message = await websocket.recv()
                 if message[:5] != b'VIDEO':
-                    print(f"Invalid message received: {message}")
+                    print(f"Invalid message received: {message[:10]}")
                 for socket in self.rooms2[room_name]:
                     if socket != websocket:
                         await socket.send(b'V' + client_name.encode('utf-8') + message[5:])

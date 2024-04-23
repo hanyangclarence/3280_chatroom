@@ -327,12 +327,12 @@ class AudioChatClientGUI:
                 #print("video received:", message[:10])
                 #after_receive_time = time.time()
                 client_id = message[1:5]
-                if message[0] == b'X':
+                if message[0:1] == b'X':
                     print("here5")
                     self.client_video_labels[client_id].pack_forget()
                     self.client_video_labels.pop(client_id)
                     continue
-                if message[0] != b'V':
+                if message[0:1] != b'V':
                     print("Invalid message received: ", message[:10])
                     continue
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
