@@ -13,6 +13,7 @@ import json
 import ReadWrite
 import os
 import math
+import librosa
 
 
 class AudioChatClientGUI:
@@ -263,11 +264,12 @@ class AudioChatClientGUI:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    print("before:",len(data))
+                    # print("before:",len(data))
                     n_steps = self.n_steps.get()
                     if n_steps != 0:
-                        data = self.change_pitch(data,n_steps)
-                        print("after:",len(data))
+                        # data = self.change_pitch(data,n_steps)
+                        data = librosa.effects.pitch_shift(np.frombuffer(data, dtype=np.int16), self.rate, n_steps)
+                        # print("after:",len(data))
                     await websocket.send(data)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
@@ -313,10 +315,10 @@ class AudioChatClientGUI:
     async def receive_and_play_video(self, websocket):
         try:
             while True:
-                before_receive_time = time.time()
+                #before_receive_time = time.time()
                 message = await websocket.recv()
                 #print("video received:", message[:10])
-                after_receive_time = time.time()
+                #after_receive_time = time.time()
                 client_id = message[1:5]  # 前4个字节是客户端ID
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
 
@@ -336,7 +338,7 @@ class AudioChatClientGUI:
 
                 self.root.after(0, self.update_client_video, client_id, frame)
                 # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
-                # await asyncio.sleep(0.01)
+                await asyncio.sleep(0.01)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play video process: {e}")
 
@@ -379,16 +381,17 @@ class AudioChatClientGUI:
             after_send_time = time.time()
             frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            img = Image.fromarray(frame_show)
+            '''img = Image.fromarray(frame_show)
 
             imgtk = ImageTk.PhotoImage(image=img)
 
             self.mylbl.imgtk = imgtk
-            self.mylbl.configure(image=imgtk)
+            self.mylbl.configure(image=imgtk)'''
+            self.root.after(0, self.update_client_video, self.config["my_name"], frame)
             #print(
             #    f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding
-            await asyncio.sleep(0.033)  # Roughly 30 frames per second
+            await asyncio.sleep(0.01)  # Roughly 30 frames per second
 
     async def run(self):
         try:
