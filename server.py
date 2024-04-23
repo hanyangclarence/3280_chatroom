@@ -76,6 +76,7 @@ class ChatServer:
         #         print(f"Client disconnected from room: {room_name}.")
         else:
             await self.handle_join(websocket, action)
+
     async def handler2(self, websocket: Socket, path):
         message = await websocket.recv()
         if message.startswith("LEAVE"):
@@ -96,7 +97,15 @@ class ChatServer:
             raise Exception('This condition should not be reached')
 
         self.rooms[room_name].add(websocket)
+
+        # clear up existing audio chunks in all buffers in the room
+        for queue in self.audio_buffers[room_name].values():
+            while not queue.empty():
+                queue.get_nowait()
+
+        # then add new audio buffer for the new client
         self.audio_buffers[room_name][websocket] = asyncio.Queue()
+
         self.print_status()
 
         try:
@@ -133,6 +142,7 @@ class ChatServer:
             else:
                 print(f"Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
             self.print_status()
+
     async def handle_join2(self, websocket: Socket, message: str):
         data = json.loads(message)
         room_name = data['room']
@@ -178,11 +188,32 @@ class ChatServer:
         del self.muted_clients[room_name]
         self.room_list.remove(room_name)
 
+    def check_synchronization(self, room_name: str):
+        # print(f'Check synchronization in room: {room_name}')
+        # check if any buffer stores too many audio chunks that cause synchronization issue
+        buffer_sizes = [buffer.qsize() for buffer in self.audio_buffers[room_name].values()]
+        tolerance_duration = 0.1  # 100 ms
+        tolerance_n_chunk = int(tolerance_duration / self.chunk_duration)
+        if max(buffer_sizes) - min(buffer_sizes) > tolerance_n_chunk:
+            # print(f"Not synchronized!!!!!!!, now all sync to {min(buffer_sizes)}")
+            # cut the audio chunks in the buffer to the min number of chunks
+            min_buffer_size = min(buffer_sizes)
+            for buffer in self.audio_buffers[room_name].values():
+                while buffer.qsize() > min_buffer_size:
+                    buffer.get_nowait()
+
     async def mix_and_broadcast(self, room_name: str):
         while True:
             try:
+                # print(f'{time.time()}\tbefore: ', end='')
+                # self.print_status()
+
                 # wait until all the buffers in the room exceed the max buffer size, except the muted clients
                 while True:
+                    # empty all the buffer for synchronization every 2 second
+                    if time.time() % 2 < 0.01:
+                        self.check_synchronization(room_name)
+
                     if len(self.rooms[room_name]) > 0:
                         if all(
                             buffer.qsize() >= self.max_buffer_size
@@ -192,11 +223,17 @@ class ChatServer:
                             break
                     await asyncio.sleep(0.01)
 
+                # print(f'{time.time()}\tafter checking buffer size: ', end='')
+                # self.print_status()
+
                 # load self.max_buffer_size of audio chunks from the buffers, except the muted clients
                 audio_chunks: Dict[Socket, List[bytes]] = {}
                 for client, buffer in self.audio_buffers[room_name].items():
                     if client not in self.muted_clients[room_name]:
                         audio_chunks[client] = [buffer.get_nowait() for _ in range(self.max_buffer_size)]
+
+                # print(f'{time.time()}\tafter readout: ', end='')
+                # self.print_status()
 
                 if len(audio_chunks) == 0:
                     # everyone is muted, no need to mix audio
@@ -214,10 +251,10 @@ class ChatServer:
                         audio_chunks[client] = np.frombuffer(audio_chunks[client], dtype=np.int16)
                         # convert to int32 to avoid overflow
                         audio_chunks[client] = audio_chunks[client].astype(np.int32)
-                        #print(f'!!!Client: {client.remote_address}, audio_chunks: {audio_chunks[client].shape}')
+                        # print(f'!!!Client: {client.remote_address}, audio_chunks: {audio_chunks[client].shape}')
 
                     mixed_chunk = np.sum([audio_chunks[client] for client in audio_chunks.keys()], axis=0)
-                    #print(f'!!!Mixed chunk with self: {mixed_chunk.shape}, {np.sum(mixed_chunk)}')
+                    # print(f'!!!Mixed chunk with self: {mixed_chunk.shape}, {np.sum(mixed_chunk)}')
 
                     # amplify the mixed data
                     mixed_chunk_byte = np.clip(mixed_chunk * self.amplification_factor, -32768, 32767).astype(np.int16).tobytes()
@@ -227,16 +264,17 @@ class ChatServer:
                         if client in audio_chunks.keys():
                             # remove the client's own audio chunk from the mixed chunk
                             mixed_chunk_without_self = mixed_chunk - audio_chunks[client]
-                        if np.sum(mixed_chunk_without_self) == 0:
-                            pass
-                            #print(f'Send empty audio to Client: {client.remote_address}')
-                        else:
-                            pass
-                            #print(f'Send non-empty audio to Client: {client.remote_address}')
+
                         # amplify the mixed data
                         mixed_chunk_without_self_byte = np.clip(mixed_chunk_without_self * self.amplification_factor, -32768, 32767).astype(np.int16).tobytes()
 
                         await client.send(mixed_chunk_byte + mixed_chunk_without_self_byte)
+
+                        # if np.sum(mixed_chunk_without_self) == 0:
+                        #     print(f'{time.time()}\tSend empty audio to Client: {client.remote_address}')
+                        # else:
+                        #     print(f'{time.time()}\tSend non-empty audio to Client: {client.remote_address}')
+
             except Exception as e:
                 print(f'error found: {e}', file=sys.stderr)
 
@@ -303,10 +341,12 @@ class ChatServer:
         async with websockets.serve(self.handler, host, port):
             print(f"Server started at ws://{host}:{port}")
             await asyncio.Future()  # run forever
+
     async def run2(self, host, port):
         async with websockets.serve(self.handler2, host, port):
             print(f"Server started at ws://{host}:{port}")
             await asyncio.Future()
+
 async def main():
     server = ChatServer(config)
     audio_server_task = asyncio.create_task(server.run(config['ip'], config['port']))

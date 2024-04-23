@@ -391,9 +391,9 @@ class AudioChatClientGUI:
         while self.capture.isOpened():
             #print("here111")
             before_read_time = time.time()
-            loop = asyncio.get_running_loop()
-            ret, frame = await loop.run_in_executor(None, self.capture.read)
-            # ret, frame = self.capture.read()
+            # loop = asyncio.get_running_loop()
+            # ret, frame = await loop.run_in_executor(None, self.capture.read)
+            ret, frame = self.capture.read()
             if not ret:
                 break
             frame = cv2.resize(frame, (200, 150))
@@ -416,7 +416,7 @@ class AudioChatClientGUI:
             try:
                 self.root.after(0, self.update_my_lbl, frame)
             except Exception as e:
-                print("here1",e)
+                print("here1", e)
             #print(
             #    f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding
