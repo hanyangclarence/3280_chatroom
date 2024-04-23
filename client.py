@@ -14,6 +14,7 @@ import ReadWrite
 import os
 import math
 import aiofiles
+import librosa
 
 
 class AudioChatClientGUI:
@@ -56,53 +57,60 @@ class AudioChatClientGUI:
 
     def _setup_gui(self):
         self.root.geometry("640x720")
-        self.status_label = tk.Label(self.root, text="Disconnected", fg="red")
+
+        controls_frame = tk.Frame(self.root)
+        controls_frame.pack(side='left', fill='both', expand=True)
+
+        video_frame = tk.Frame(self.root, width=200, height=150)
+        video_frame.pack(side='right', fill='both', expand=True)
+
+        self.status_label = tk.Label(controls_frame, text="Disconnected", fg="red")
         self.status_label.pack(pady=5)
         #self.status_label.place(x=100,y=10)
 
-        self.create_room_button = tk.Button(self.root, text="Create Chat Room", command=self.create_room)
+        self.create_room_button = tk.Button(controls_frame, text="Create Chat Room", command=self.create_room)
         self.create_room_button.pack(pady=5)
         #self.create_room_button.place(x=100,y=60)
 
-        self.list_rooms_button = tk.Button(self.root, text="List Chat Rooms", command=self.list_rooms)
+        self.list_rooms_button = tk.Button(controls_frame, text="List Chat Rooms", command=self.list_rooms)
         self.list_rooms_button.pack(pady=5)
         #self.list_rooms_button.place(x=100,y=110)
 
-        self.rooms_listbox = tk.Listbox(self.root)
+        self.rooms_listbox = tk.Listbox(controls_frame)
         self.rooms_listbox.pack(pady=5)
         #self.rooms_listbox.pack(side='left',padx=100)
         #self.list_rooms_button.place(x=200,y=110)
 
-        self.connect_button = tk.Button(self.root, text="Connect to Selected Room",
+        self.connect_button = tk.Button(controls_frame, text="Connect to Selected Room",
                                         command=self.connect_to_selected_room)
         self.connect_button.pack(pady=5)
         #self.connect_button.place(x=100,y=400)
 
-        self.disconnect_button = tk.Button(self.root, text="Disconnect from Selected Room",
+        self.disconnect_button = tk.Button(controls_frame, text="Disconnect from Selected Room",
                                            command=self.disconnect_from_room)
         self.disconnect_button.pack(pady=5)
         #self.disconnect_button.place(x=100,y=450)
 
-        self.delete_room_button = tk.Button(self.root, text="Delete Selected Room", command=self.delete_selected_room)
+        self.delete_room_button = tk.Button(controls_frame, text="Delete Selected Room", command=self.delete_selected_room)
         self.delete_room_button.pack(pady=5)
         #self.delete_room_button.place(x=100,y=500)
 
-        self.mute_button = tk.Button(self.root, text="Mute", command=self.toggle_mute)
+        self.mute_button = tk.Button(controls_frame, text="Mute", command=self.toggle_mute)
         #self.mute_button.pack(pady=5)
         #self.mute_button.place(x=600,y=60)
 
-        self.save_recording_button = tk.Button(self.root, text="Start Recording", command=self.save_recording)
+        self.save_recording_button = tk.Button(controls_frame, text="Start Recording", command=self.save_recording)
         #self.save_recording_button.pack(pady=5)
         #self.save_recording_button.place(x=600,y=110)
 
-        title_label_1 = tk.Label(self.root, text="Voice Change", font=("Arial", 12, "bold"))
+        title_label_1 = tk.Label(controls_frame, text="Voice Change", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
-        self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
+        self.n_steps = tk.Scale(controls_frame, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
         self.n_steps.pack()
         self.n_steps.set(0.0)
 
-        self.video_frame = tk.Frame(self.root, width=200, height=150)
+        self.video_frame = tk.Frame(video_frame, width=200, height=150)
         self.video_frame.pack(pady=10)
 
         self.client_video_labels = {}
@@ -113,8 +121,10 @@ class AudioChatClientGUI:
         self.capture = cv2.VideoCapture(0)
 
     def show_control_buttons(self):
-        self.mute_button.place(x=500,y=60)
-        self.save_recording_button.place(x=500,y=110)
+        # self.mute_button.place(x=500,y=60)
+        # self.save_recording_button.place(x=500,y=110)
+        self.mute_button.pack(pady=5)
+        self.save_recording_button.pack(pady=5)
 
     def hide_control_buttons(self):
         self.mute_button.pack_forget()
@@ -225,7 +235,7 @@ class AudioChatClientGUI:
             # update new_pos and old_pos
             new_pos += hs
             old_pos += ha
-        new_arr = new_arr.astype(np.int16)
+        # new_arr = new_arr.astype(np.int16)
         return new_arr
         # tobytes = new_arr.tobytes()
         # return tobytes
@@ -261,8 +271,13 @@ class AudioChatClientGUI:
                     # print("before:",len(data))
                     n_steps = self.n_steps.get()
                     if n_steps != 0:
-                        data = self.change_pitch(data,n_steps)
-                        print("after:",len(data))
+                        # data = self.change_pitch(data,n_steps)
+                        data_float32 = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                        data_float32 /= np.iinfo(np.int16).max
+                        shifted_data = librosa.effects.pitch_shift(data_float32, sr=self.rate, n_steps=n_steps)
+                        shifted_data_int16 = (shifted_data * np.iinfo(np.int16).max).astype(np.int16)
+                        data = shifted_data_int16.tobytes()
+                        # print("after:",len(data))
                     await websocket.send(data)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
@@ -320,11 +335,15 @@ class AudioChatClientGUI:
     async def receive_and_play_video(self, websocket):
         try:
             while True:
-                before_receive_time = time.time()
+                #before_receive_time = time.time()
                 message = await websocket.recv()
                 #print("video received:", message[:10])
-                after_receive_time = time.time()
-                client_id = message[1:5]  # 前4个字节是客户端ID
+                #after_receive_time = time.time()
+                client_id = message[1:5]
+                if message[0] == b'X':
+                    self.client_video_labels[client_id].pack_forget()
+                    self.client_video_labels.pop(client_id)
+                    continue
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
 
                 # cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -340,13 +359,21 @@ class AudioChatClientGUI:
                 # label.imgtk = image_tk
                 # label.configure(image=image_tk)
                 # after_play_time = time.time()
-
-                self.root.after(0, self.update_client_video, client_id, frame)
+                try:
+                    self.root.after(0, self.update_client_video, client_id, frame)
+                except Exception as e:
+                    print("here2",e)
                 # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
-                # await asyncio.sleep(0.01)
+                await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play video process: {e}")
 
+    def update_my_lbl(self, frame):
+        cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(cv_image)
+        image_tk = ImageTk.PhotoImage(image=pil_image)
+        self.mylbl.imgtk = image_tk
+        self.mylbl.configure(image=image_tk)
     def update_client_video(self, client_id, frame):
         cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(cv_image)
@@ -372,7 +399,9 @@ class AudioChatClientGUI:
         while self.capture.isOpened():
             #print("here111")
             before_read_time = time.time()
-            ret, frame = self.capture.read()
+            loop = asyncio.get_running_loop()
+            ret, frame = await loop.run_in_executor(None, self.capture.read)
+            # ret, frame = self.capture.read()
             if not ret:
                 break
             frame = cv2.resize(frame, (200, 150))
@@ -383,15 +412,19 @@ class AudioChatClientGUI:
             image_size = len(bytes_buffer)
             #print(image_size)
             await websocket.send(b"VIDEO" + bytes_buffer)
-            after_send_time = time.time()
-            frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            img = Image.fromarray(frame_show)
-
-            imgtk = ImageTk.PhotoImage(image=img)
-
-            self.mylbl.imgtk = imgtk
-            self.mylbl.configure(image=imgtk)
+            # after_send_time = time.time()
+            # frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            #
+            # img = Image.fromarray(frame_show)
+            #
+            # imgtk = ImageTk.PhotoImage(image=img)
+            #
+            # self.mylbl.imgtk = imgtk
+            # self.mylbl.configure(image=imgtk)
+            try:
+                self.root.after(0, self.update_my_lbl, frame)
+            except Exception as e:
+                print("here1",e)
             #print(
             #    f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding
@@ -474,9 +507,9 @@ class AudioChatClientGUI:
 
 
 if __name__ == "__main__":
-    # try:
+    try:
         uri = f"ws://{config['ip']}:{config['port']}"
         client = AudioChatClientGUI(uri, config=config)
         client.start_gui()
-    # except Exception as e:
-    #     print(f"Unhandled exception: {e}")
+    except Exception as e:
+        print(f"Unhandled exception: {e}")
