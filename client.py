@@ -327,6 +327,7 @@ class AudioChatClientGUI:
                 if message[0] == b'X':
                     self.client_video_labels[client_id].pack_forget()
                     self.client_video_labels.pop(client_id)
+                    continue
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
 
                 # cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -347,7 +348,7 @@ class AudioChatClientGUI:
                 except Exception as e:
                     print("here2",e)
                 # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play video process: {e}")
 
@@ -382,7 +383,9 @@ class AudioChatClientGUI:
         while self.capture.isOpened():
             #print("here111")
             before_read_time = time.time()
-            ret, frame = self.capture.read()
+            loop = asyncio.get_running_loop()
+            ret, frame = await loop.run_in_executor(None, self.capture.read)
+            # ret, frame = self.capture.read()
             if not ret:
                 break
             frame = cv2.resize(frame, (200, 150))
@@ -409,7 +412,7 @@ class AudioChatClientGUI:
             #print(
             #    f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding
-            await asyncio.sleep(0.01)  # Roughly 30 frames per second
+            await asyncio.sleep(0.033)  # Roughly 30 frames per second
 
     async def run(self):
         try:

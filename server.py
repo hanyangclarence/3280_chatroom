@@ -118,7 +118,7 @@ class ChatServer:
                             self.audio_buffers[room_name][websocket].get_nowait()
                         #self.print_status()
                 await asyncio.sleep(0)
-        except websockets.exceptions.ConnectionClosedError:
+        except Exception as e:
             print(f"except:Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
         finally:
             if websocket in self.rooms[room_name]:
@@ -148,7 +148,7 @@ class ChatServer:
                 for socket in self.rooms2[room_name]:
                     if socket != websocket:
                         await socket.send(b'V' + client_name.encode('utf-8') + message[5:])
-        except websockets.exceptions.ConnectionClosedError:
+        except Exception as e:
             print(f"except:Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
         finally:
             for socket in self.rooms2[room_name]:
