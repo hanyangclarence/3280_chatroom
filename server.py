@@ -151,6 +151,9 @@ class ChatServer:
         except websockets.exceptions.ConnectionClosedError:
             print(f"except:Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
         finally:
+            for socket in self.rooms2[room_name]:
+                if socket != websocket:
+                    await socket.send(b'X' + client_name.encode('utf-8'))
             if websocket in self.rooms2[room_name]:
                 self.rooms2[room_name].remove(websocket)
             if len(self.rooms2[room_name]) == 0:

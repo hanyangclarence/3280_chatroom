@@ -231,7 +231,7 @@ class AudioChatClientGUI:
             # update new_pos and old_pos
             new_pos += hs
             old_pos += ha
-        new_arr = new_arr.astype(np.int16)
+        # new_arr = new_arr.astype(np.int16)
         return new_arr
         # tobytes = new_arr.tobytes()
         # return tobytes
@@ -258,7 +258,7 @@ class AudioChatClientGUI:
         return bytes_arr
 
     async def record_and_send(self, websocket):
-        try:
+        # try:
             while True:
                 if not self.is_muted:
                     # Get the running event loop
@@ -268,7 +268,11 @@ class AudioChatClientGUI:
                     n_steps = self.n_steps.get()
                     if n_steps != 0:
                         # data = self.change_pitch(data,n_steps)
-                        data = librosa.effects.pitch_shift(np.frombuffer(data, dtype=np.int16), self.rate, n_steps)
+                        data_float32 = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                        data_float32 /= np.iinfo(np.int16).max
+                        shifted_data = librosa.effects.pitch_shift(data_float32, sr=self.rate, n_steps=n_steps)
+                        shifted_data_int16 = (shifted_data * np.iinfo(np.int16).max).astype(np.int16)
+                        data = shifted_data_int16.tobytes()
                         # print("after:",len(data))
                     await websocket.send(data)
                 else:
@@ -278,8 +282,8 @@ class AudioChatClientGUI:
                     await websocket.send(mute_message)
                 # Give the control back
                 await asyncio.sleep(0)
-        except websockets.exceptions.ConnectionClosedError as e:
-            print(f"Connection closed during record and send process: {e}")
+        # except websockets.exceptions.ConnectionClosedError as e:
+        #     print(f"Connection closed during record and send process: {e}")
 
 
     async def receive_and_play(self, websocket):
@@ -319,7 +323,10 @@ class AudioChatClientGUI:
                 message = await websocket.recv()
                 #print("video received:", message[:10])
                 #after_receive_time = time.time()
-                client_id = message[1:5]  # 前4个字节是客户端ID
+                client_id = message[1:5]
+                if message[0] == b'X':
+                    self.client_video_labels[client_id].pack_forget()
+                    self.client_video_labels.pop(client_id)
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
 
                 # cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -335,13 +342,21 @@ class AudioChatClientGUI:
                 # label.imgtk = image_tk
                 # label.configure(image=image_tk)
                 # after_play_time = time.time()
-
-                self.root.after(0, self.update_client_video, client_id, frame)
+                try:
+                    self.root.after(0, self.update_client_video, client_id, frame)
+                except Exception as e:
+                    print("here2",e)
                 # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
                 await asyncio.sleep(0.01)
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play video process: {e}")
 
+    def update_my_lbl(self, frame):
+        cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(cv_image)
+        image_tk = ImageTk.PhotoImage(image=pil_image)
+        self.mylbl.imgtk = image_tk
+        self.mylbl.configure(image=image_tk)
     def update_client_video(self, client_id, frame):
         cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(cv_image)
@@ -378,16 +393,19 @@ class AudioChatClientGUI:
             image_size = len(bytes_buffer)
             #print(image_size)
             await websocket.send(b"VIDEO" + bytes_buffer)
-            after_send_time = time.time()
-            frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            '''img = Image.fromarray(frame_show)
-
-            imgtk = ImageTk.PhotoImage(image=img)
-
-            self.mylbl.imgtk = imgtk
-            self.mylbl.configure(image=imgtk)'''
-            self.root.after(0, self.update_client_video, self.config["my_name"], frame)
+            # after_send_time = time.time()
+            # frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            #
+            # img = Image.fromarray(frame_show)
+            #
+            # imgtk = ImageTk.PhotoImage(image=img)
+            #
+            # self.mylbl.imgtk = imgtk
+            # self.mylbl.configure(image=imgtk)
+            try:
+                self.root.after(0, self.update_my_lbl, frame)
+            except Exception as e:
+                print("here1",e)
             #print(
             #    f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding
@@ -408,8 +426,11 @@ class AudioChatClientGUI:
                 self.send_video_task = asyncio.create_task(self.record_and_send_video(websocket2))
                 self.mylbl.pack()
                 self.receive_video_task = asyncio.create_task(self.receive_and_play_video(websocket2))
-                await asyncio.gather(self.send_task, self.receive_task, self.send_video_task,
+                try:
+                    await asyncio.gather(self.send_task, self.receive_task, self.send_video_task,
                                      self.receive_video_task)
+                except asyncio.CancelledError:
+                    print("Cancelled")
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
         # finally:
@@ -445,7 +466,9 @@ class AudioChatClientGUI:
     def update_ui_after_disconnect(self):
         self.status_label.config(text="Disconnected", fg="red")
         self.chat_room = ""
+        print(self.client_video_labels)
         for label in self.client_video_labels.values():
+            print("here")
             label.pack_forget()
         self.client_video_labels = {}
         self.mylbl.pack_forget()
