@@ -425,7 +425,6 @@ class AudioChatClientGUI:
     async def run(self):
         try:
             async with websockets.connect(self.uri) as websocket:
-                self.websocket = websocket
                 await websocket.send(self.chat_room)  # Use the GUI-input chat room name
                 if not self.capture.isOpened():
                     # open camera failed
@@ -439,8 +438,11 @@ class AudioChatClientGUI:
                 self.send_video_task = asyncio.create_task(self.record_and_send_video(self.websocket2))
                 self.receive_video_task = asyncio.create_task(self.receive_and_play_video(self.websocket2))
                 self.mylbl.pack()
-
-                await asyncio.gather(self.send_task, self.receive_task, self.send_video_task, self.receive_video_task)
+                try:
+                    await asyncio.gather(self.send_task, self.receive_task, self.send_video_task, self.receive_video_task)
+                except asyncio.CancelledError:
+                    print("Cancelled")
+                    await self.websocket2.close()
 
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
@@ -461,12 +463,6 @@ class AudioChatClientGUI:
         if self.send_video_task is not None:
             self.send_video_task.cancel()
             self.send_video_task = None
-        if self.websocket is not None:
-            await self.websocket.close()
-            self.websocket = None
-        if self.websocket2 is not None:
-            await self.websocket2.close()
-            self.websocket2 = None
         self.cleanup_resources()
 
     def cleanup_resources(self):
