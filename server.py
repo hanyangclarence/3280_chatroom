@@ -119,7 +119,7 @@ class ChatServer:
                         #self.print_status()
                 await asyncio.sleep(0)
         except Exception as e:
-            print(f"except{e}:Client disconnected from {room_name}. Total clients in room: {len(self.rooms[room_name])}")
+            print(f"except{e}:Client disconnected from {room_name}.")
         finally:
             if websocket in self.rooms[room_name]:
                 self.rooms[room_name].remove(websocket)
@@ -147,16 +147,22 @@ class ChatServer:
                 message = await websocket.recv()
                 if message[:5] != b'VIDEO':
                     print(f"Invalid message received: {message[:10]}")
-                for socket in self.rooms2[room_name]:
+                for socket in self.rooms2[room_name].copy():
                     if socket != websocket:
-                        await socket.send(b'V' + client_name.encode('utf-8') + message[5:])
+                        try:
+                            await socket.send(b'V' + client_name.encode('utf-8') + message[5:])
+                        except Exception as e:
+                            print(f"here333except{e}",client_name)
         except Exception as e:
-            print(f"except:Client disconnected from {room_name}. Total clients in room: {len(self.rooms2[room_name])}")
+            print(f"handler2except{e}:Client disconnected from {room_name}.")
         finally:
-            for socket in self.rooms2[room_name]:
+            for socket in self.rooms2[room_name].copy():
                 if socket != websocket:
                     print("here4")
-                    await socket.send(b'X' + client_name.encode('utf-8'))
+                    try:
+                        await socket.send(b'X' + client_name.encode('utf-8'))
+                    except Exception as e:
+                        print(f"here444except{e}",client_name)
             if websocket in self.rooms2[room_name]:
                 self.rooms2[room_name].remove(websocket)
             if len(self.rooms2[room_name]) == 0:

@@ -328,7 +328,7 @@ class AudioChatClientGUI:
                 #after_receive_time = time.time()
                 client_id = message[1:5]
                 if message[0:1] == b'X':
-                    print("here5")
+                    print("here5",self.client_video_labels,client_id)
                     self.client_video_labels[client_id].pack_forget()
                     self.client_video_labels.pop(client_id)
                     continue
@@ -443,6 +443,7 @@ class AudioChatClientGUI:
                 except asyncio.CancelledError:
                     print("Cancelled")
                     await self.websocket2.close()
+                    self.update_ui_after_disconnect()
 
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
