@@ -13,6 +13,7 @@ import json
 import ReadWrite
 import os
 import math
+import librosa
 
 
 class AudioChatClientGUI:
@@ -254,11 +255,12 @@ class AudioChatClientGUI:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    print("before:",len(data))
+                    # print("before:",len(data))
                     n_steps = self.n_steps.get()
                     if n_steps != 0:
-                        data = self.change_pitch(data,n_steps)
-                        print("after:",len(data))
+                        # data = self.change_pitch(data,n_steps)
+                        data = librosa.effects.pitch_shift(np.frombuffer(data, dtype=np.int16), self.rate, n_steps)
+                        # print("after:",len(data))
                     await websocket.send(data)
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
