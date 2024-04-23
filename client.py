@@ -30,6 +30,7 @@ class AudioChatClientGUI:
         self.root.title("Audio Chat Client")
         self.username = config["my_name"]
 
+        self.websocket = None
         self.send_task = None
         self.receive_task = None
 
