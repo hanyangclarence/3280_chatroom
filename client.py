@@ -52,53 +52,60 @@ class AudioChatClientGUI:
 
     def _setup_gui(self):
         self.root.geometry("640x720")
-        self.status_label = tk.Label(self.root, text="Disconnected", fg="red")
+
+        controls_frame = tk.Frame(self.root)
+        controls_frame.pack(side='left', fill='both', expand=True)
+        
+        video_frame = tk.Frame(self.root, width=200, height=150)
+        video_frame.pack(side='right', fill='both', expand=True)
+
+        self.status_label = tk.Label(controls_frame, text="Disconnected", fg="red")
         self.status_label.pack(pady=5)
         #self.status_label.place(x=100,y=10)
 
-        self.create_room_button = tk.Button(self.root, text="Create Chat Room", command=self.create_room)
+        self.create_room_button = tk.Button(controls_frame, text="Create Chat Room", command=self.create_room)
         self.create_room_button.pack(pady=5)
         #self.create_room_button.place(x=100,y=60)
 
-        self.list_rooms_button = tk.Button(self.root, text="List Chat Rooms", command=self.list_rooms)
+        self.list_rooms_button = tk.Button(controls_frame, text="List Chat Rooms", command=self.list_rooms)
         self.list_rooms_button.pack(pady=5)
         #self.list_rooms_button.place(x=100,y=110)
 
-        self.rooms_listbox = tk.Listbox(self.root)
+        self.rooms_listbox = tk.Listbox(controls_frame)
         self.rooms_listbox.pack(pady=5)
         #self.rooms_listbox.pack(side='left',padx=100)
         #self.list_rooms_button.place(x=200,y=110)
 
-        self.connect_button = tk.Button(self.root, text="Connect to Selected Room",
+        self.connect_button = tk.Button(controls_frame, text="Connect to Selected Room",
                                         command=self.connect_to_selected_room)
         self.connect_button.pack(pady=5)
         #self.connect_button.place(x=100,y=400)
 
-        self.disconnect_button = tk.Button(self.root, text="Disconnect from Selected Room",
+        self.disconnect_button = tk.Button(controls_frame, text="Disconnect from Selected Room",
                                            command=self.disconnect_from_room)
         self.disconnect_button.pack(pady=5)
         #self.disconnect_button.place(x=100,y=450)
 
-        self.delete_room_button = tk.Button(self.root, text="Delete Selected Room", command=self.delete_selected_room)
+        self.delete_room_button = tk.Button(controls_frame, text="Delete Selected Room", command=self.delete_selected_room)
         self.delete_room_button.pack(pady=5)
         #self.delete_room_button.place(x=100,y=500)
 
-        self.mute_button = tk.Button(self.root, text="Mute", command=self.toggle_mute)
+        self.mute_button = tk.Button(controls_frame, text="Mute", command=self.toggle_mute)
         #self.mute_button.pack(pady=5)
         #self.mute_button.place(x=600,y=60)
 
-        self.save_recording_button = tk.Button(self.root, text="Start Recording", command=self.save_recording)
+        self.save_recording_button = tk.Button(controls_frame, text="Start Recording", command=self.save_recording)
         #self.save_recording_button.pack(pady=5)
         #self.save_recording_button.place(x=600,y=110)
 
-        title_label_1 = tk.Label(self.root, text="Voice Change", font=("Arial", 12, "bold"))
+        title_label_1 = tk.Label(controls_frame, text="Voice Change", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
-        self.n_steps = tk.Scale(self.root, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
+        self.n_steps = tk.Scale(controls_frame, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
         self.n_steps.pack()
         self.n_steps.set(0.0)
 
-        self.video_frame = tk.Frame(self.root, width=200, height=150)
+        self.video_frame = tk.Frame(video_frame, width=200, height=150)
         self.video_frame.pack(pady=10)
 
         self.client_video_labels = {}
@@ -109,8 +116,10 @@ class AudioChatClientGUI:
         self.capture = cv2.VideoCapture(0)
 
     def show_control_buttons(self):
-        self.mute_button.place(x=500,y=60)
-        self.save_recording_button.place(x=500,y=110)
+        # self.mute_button.place(x=500,y=60)
+        # self.save_recording_button.place(x=500,y=110)
+        self.mute_button.pack(pady=5)
+        self.save_recording_button.pack(pady=5)
 
     def hide_control_buttons(self):
         self.mute_button.pack_forget()
