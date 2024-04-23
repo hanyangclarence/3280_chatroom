@@ -424,16 +424,17 @@ class AudioChatClientGUI:
                 self.record_stream, self.play_stream = self.open_stream()
                 self.send_task = asyncio.create_task(self.record_and_send(websocket))
                 self.receive_task = asyncio.create_task(self.receive_and_play(websocket))
-                websocket2 = await websockets.connect(f"ws://{config['ip']}:5679")
-                await websocket2.send(json.dumps({"room": self.chat_room, "user": self.username, "type": "video"}))
-                self.send_video_task = asyncio.create_task(self.record_and_send_video(websocket2))
+                self.websocket2 = await websockets.connect(f"ws://{config['ip']}:5679")
+                await self.websocket2.send(json.dumps({"room": self.chat_room, "user": self.username, "type": "video"}))
+                self.send_video_task = asyncio.create_task(self.record_and_send_video(self.websocket2))
                 self.mylbl.pack()
-                self.receive_video_task = asyncio.create_task(self.receive_and_play_video(websocket2))
+                self.receive_video_task = asyncio.create_task(self.receive_and_play_video(self.websocket2))
                 try:
                     await asyncio.gather(self.send_task, self.receive_task, self.send_video_task,
                                      self.receive_video_task)
                 except asyncio.CancelledError:
                     print("Cancelled")
+                    await self.websocket2.close()
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed: {e}")
         # finally:
@@ -447,6 +448,12 @@ class AudioChatClientGUI:
         if self.receive_task is not None:
             self.receive_task.cancel()
             self.receive_task = None
+        if self.send_video_task is not None:
+            self.send_video_task.cancel()
+            self.send_video_task = None
+        if self.send_video_task is not None:
+            self.send_video_task.cancel()
+            self.send_video_task = None
         if self.websocket is not None:
             await self.websocket.close()
             self.websocket = None
