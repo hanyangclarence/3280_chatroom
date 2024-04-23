@@ -30,7 +30,6 @@ class AudioChatClientGUI:
         self.root.title("Audio Chat Client")
         self.username = config["my_name"]
 
-        self.websocket = None
         self.send_task = None
         self.receive_task = None
 
@@ -447,9 +446,6 @@ class AudioChatClientGUI:
         if self.receive_task is not None:
             self.receive_task.cancel()
             self.receive_task = None
-        if self.websocket is not None:
-            await self.websocket.close()
-            self.websocket = None
         self.cleanup_resources()
 
     def cleanup_resources(self):
