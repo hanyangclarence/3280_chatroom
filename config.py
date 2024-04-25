@@ -7,9 +7,9 @@ config = {
 
     "channel": 1,
     "rate": 44100,
-    "chunk_size": 1024,
+    "chunk_size": 2048,
 
-    "max_buffer_size": 8,
+    "max_buffer_size": 4,
 
     "amplification_factor": 3,
     "my_name": "yhhh",

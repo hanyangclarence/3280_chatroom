@@ -210,8 +210,8 @@ class ChatServer:
 
                 # wait until all the buffers in the room exceed the max buffer size, except the muted clients
                 while True:
-                    # empty all the buffer for synchronization every 2 second
-                    if time.time() % 2 < 0.01:
+                    # empty all the buffer for synchronization every 10 second
+                    if time.time() % 10 < 0.01:
                         self.check_synchronization(room_name)
 
                     if len(self.rooms[room_name]) > 0:
