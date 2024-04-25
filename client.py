@@ -38,6 +38,7 @@ class AudioChatClientGUI:
         self.send_video_task = None
         self.receive_video_task = None
         self.filename_count = 0
+        self.other_filename_count = 0
 
         self.record_stream = None
         self.play_stream = None
@@ -331,11 +332,11 @@ class AudioChatClientGUI:
                 # print(f'interval time: {interval_time}')
                 message = await websocket.recv()
                 if message[:4] == b'FILE':
-                    file_path = os.path.join(os.getcwd(), "other's_recording_",str(self.filename_count),".wav")
-                    async with aiofiles.open(file_path, "rb") as f:
+                    file_path = os.path.join(os.getcwd(), "other's_recording_"+str(self.other_filename_count)+".wav")
+                    async with aiofiles.open(file_path, "wb") as f:
                     # async with open(os.path.join(os.getcwd(), "other's_recording_",str(self.filename_count),".wav"), "wb") as f:
-                        await f.write(message[5:])
-                        self.filename_count += 1
+                        await f.write(message[4:])
+                        self.other_filename_count += 1
                     continue
                 # after_receive = time.time()
                 # print(f'receive: receive time: {after_receive - before_receive}')
@@ -359,12 +360,13 @@ class AudioChatClientGUI:
             print(f"Connection closed during receive and play process: {e}")
 
     async def send_file(self):
-        async with aiofiles.open(os.path.join(os.getcwd(), self.config["record_path"]), "rb") as f:
+        async with aiofiles.open(os.path.join(os.getcwd(), "last_recording_"+str(self.filename_count-1)+".wav"), "rb") as f:
             content = await f.read()
             await self.websocket.send(b"FILE"+content)
     def save_recording(self):
         if self.is_recording == True:
-            self.audio.write(os.path.join(os.getcwd(), self.config["record_path"]))
+            self.audio.write(os.path.join(os.getcwd(), "last_recording_"+str(self.filename_count)+".wav"))
+            self.filename_count += 1
             asyncio.run(self.send_file())
             self.audio = ReadWrite.Audio()
             self.audio.loadConfig(config["rate"], config["channel"], bytesPerSample=2)
@@ -488,6 +490,7 @@ class AudioChatClientGUI:
     async def run(self):
         try:
             async with websockets.connect(self.uri) as websocket:
+                self.websocket = websocket
                 await websocket.send(self.chat_room)  # Use the GUI-input chat room name
                 if not self.capture.isOpened():
                     # open camera failed
@@ -506,6 +509,8 @@ class AudioChatClientGUI:
                 except asyncio.CancelledError:
                     print("Cancelled")
                     await self.websocket2.close()
+                    self.websocket2 = None
+                    self.websocket = None
                     self.update_ui_after_disconnect()
 
         except websockets.exceptions.ConnectionClosedError as e:
