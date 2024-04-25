@@ -13,7 +13,7 @@ import json
 import ReadWrite
 import os
 import math
-import librosa
+# import librosa
 
 
 class AudioChatClientGUI:
@@ -53,6 +53,11 @@ class AudioChatClientGUI:
         # Initially hide the mute and save recording buttons
         self.mute_button.pack_forget()
         self.save_recording_button.pack_forget()
+
+        # # warm up
+        # data = np.random.randint(-32768, 32768, 1024, dtype=np.int16).tobytes()
+        # _ = librosa.util.buf_to_float(np.frombuffer(data, dtype=np.int16), n_bytes=2)
+        # _ = librosa.effects.pitch_shift(np.zeros((22050,)), sr=22050, n_steps=0)
 
     def _setup_gui(self):
         self.root.geometry("640x720")
@@ -215,9 +220,9 @@ class AudioChatClientGUI:
         return record_stream, play_stream
 
     def change_speed(self, speed, frames):
-        arr = np.frombuffer(frames, dtype=np.int16)
+        arr = frames
         new_length = int(len(arr) / speed)
-        new_arr = np.zeros(new_length, dtype=np.float64)
+        new_arr = np.zeros(new_length, dtype=np.float32)
         win_size = 1024
         hs = win_size // 2
         ha = int(speed * hs)
@@ -249,36 +254,61 @@ class AudioChatClientGUI:
         print("here1")
         y = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)), frames)
         sr = self.rate
-        original_length = len(y.tobytes())
-        print("length after changing speed",original_length)
+        # original_length = len(y.tobytes())
+        # print("length after changing speed",original_length)
         y_shifted = self.pitch_interp(y, sr, n_steps)
 
         # Convert back to int16
-        y_shifted_int = y_shifted.astype(np.int16)
+        # y_shifted_int = y_shifted.astype(np.int16)
 
         # Splitting the shifted audio into frames
-        bytes_arr = y_shifted_int.tobytes()
-        print("length after pitch change",len(bytes_arr))
-        return bytes_arr
+        # bytes_arr = y_shifted_int.tobytes()
+        # print("length after pitch change",len(bytes_arr))
+        return y_shifted
 
     async def record_and_send(self, websocket):
         # try:
+            last_chunk = np.zeros(self.chunk_size)
+            last_shifted = np.zeros(self.chunk_size)
             while True:
                 if not self.is_muted:
                     # Get the running event loop
                     loop = asyncio.get_event_loop()
+                    # before_read = time.time()
                     data = await loop.run_in_executor(None, self.record_stream.read, self.chunk_size, False)
-                    # print("before:",len(data))
+                    # print("before:",len(data),data[:10],data[-10:],data[500:510])
+                    # after_read = time.time()
+                    # print(f'record: read time: {after_read - before_read}')
                     n_steps = self.n_steps.get()
+                    # time0 = time.time()
                     if n_steps != 0:
-                        # data = self.change_pitch(data,n_steps)
-                        data_float32 = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-                        data_float32 /= np.iinfo(np.int16).max
-                        shifted_data = librosa.effects.pitch_shift(data_float32, sr=self.rate, n_steps=n_steps)
-                        shifted_data_int16 = (shifted_data * np.iinfo(np.int16).max).astype(np.int16)
-                        data = shifted_data_int16.tobytes()
-                        # print("after:",len(data))
+                        # time1 = time.time()
+                        audio_array = np.frombuffer(data, dtype=np.int16)
+                        audio_float = audio_array.astype(np.float32) / np.iinfo(np.int16).max
+                        # audio_float = librosa.util.buf_to_float(audio_array, n_bytes=2, dtype=np.int16)
+                        audio_float = np.concatenate((last_chunk, audio_float))
+                        last_chunk = audio_float[-self.chunk_size:]
+                        # time2 = time.time()
+                        # shifted_data = librosa.effects.pitch_shift(audio_float, sr=self.rate, n_steps=n_steps)
+                        shifted_data = self.change_pitch(audio_float, n_steps)
+                        if len(shifted_data) < self.chunk_size*2:
+                            shifted_data = np.concatenate((shifted_data, np.zeros(self.chunk_size*2-len(shifted_data))))
+                        elif len(shifted_data) > self.chunk_size*2:
+                            shifted_data = shifted_data[:self.chunk_size*2]
+                        shifted_data = np.hanning(self.chunk_size*2) * shifted_data
+                        ready_to_send = shifted_data[:self.chunk_size] + last_shifted
+                        last_shifted = shifted_data[-self.chunk_size:]
+                        # time3 = time.time()
+                        audio_int16 = np.int16(ready_to_send * 32767)
+                        data = audio_int16.tobytes()
+                        # time4 = time.time()
+                        # print(time4-time3,time3-time2,time2-time1,time1-time0)
+                        # print("after:",len(data),data[:10],data[-10:],data[500:510])
                     await websocket.send(data)
+                    # time5 = time.time()
+                    # print(time5-time0)
+                    # after_send = time.time()
+                    # print(f'record: send time: {after_send - after_read}')
                 else:
                     # sleep for the same duration as the recording interval to avoid busy waiting
                     await asyncio.sleep(self.chunk_size / self.rate)
@@ -291,19 +321,31 @@ class AudioChatClientGUI:
 
     async def receive_and_play(self, websocket):
         try:
+            after_play = time.time()
             while True:
                 # message is chunks_without_self + chunks_with_self
+                before_receive = time.time()
+                interval_time = before_receive - after_play
+                print(f'interval time: {interval_time}')
                 message = await websocket.recv()
+                after_receive = time.time()
+                print(f'receive: receive time: {after_receive - before_receive}')
                 chunks_with_self = message[:self.audio_chunk_size]
                 chunks_without_self = message[self.audio_chunk_size:]
+                after_slice = time.time()
+                print(f'receive: slice time: {after_slice - after_receive}')
                 #print(f'chunks_with_self: {len(chunks_with_self)}, chunks_without_self: {len(chunks_without_self)}')
                 if self.is_recording==True:
                     self.audio.appendData(chunks_with_self, self.config["rate"], self.config["channel"], 2)
+                after_append = time.time()
+                print(f'receive: append time: {after_append - after_slice}')
                 if len(chunks_without_self) > 0:
                     # run the stream.write in a separate thread to avoid blocking
                     await asyncio.get_event_loop().run_in_executor(None, self.play_stream.write, chunks_without_self)
                 else:
                     await asyncio.sleep(0)
+                after_play = time.time()
+                print(f'receive: play time: {after_play - after_append}')
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed during receive and play process: {e}")
 
@@ -322,19 +364,20 @@ class AudioChatClientGUI:
     async def receive_and_play_video(self, websocket):
         try:
             while True:
-                #before_receive_time = time.time()
+                before_receive_time = time.time()
                 message = await websocket.recv()
                 #print("video received:", message[:10])
-                #after_receive_time = time.time()
+                after_receive_time = time.time()
+                # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}')
                 client_id = message[1:5]
                 if message[0:1] == b'X':
                     print("here5",self.client_video_labels,client_id)
                     self.client_video_labels[client_id].pack_forget()
                     self.client_video_labels.pop(client_id)
                     continue
-                if message[0:1] != b'V':
-                    print("Invalid message received: ", message[:10])
-                    continue
+                # if message[0:1] != b'V':
+                #     print("Invalid message received: ", message[:10])
+                #     continue
                 frame = cv2.imdecode(np.frombuffer(message[5:], np.uint8), cv2.IMREAD_COLOR)
 
                 # cv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -354,6 +397,8 @@ class AudioChatClientGUI:
                     self.root.after(0, self.update_client_video, client_id, frame)
                 except Exception as e:
                     print("here2",e)
+                after_update_time = time.time()
+                # print(f'video:Receive: update time: {after_update_time - after_receive_time}')
                 # print(f'video:Receive: receive time: {after_receive_time - before_receive_time}, play time: {after_play_time - after_receive_time}')
                 await asyncio.sleep(0)
         except websockets.exceptions.ConnectionClosedError as e:
@@ -400,11 +445,13 @@ class AudioChatClientGUI:
             # Here you would need to encode the frame using a codec like H.264
             _, buffer = cv2.imencode('.jpg', frame)
             after_read_time = time.time()
+            # print(f'record video: read time: {after_read_time - before_read_time}')
             bytes_buffer = buffer.tobytes()
             image_size = len(bytes_buffer)
             #print(image_size)
             await websocket.send(b"VIDEO" + bytes_buffer)
-            # after_send_time = time.time()
+            after_send_time = time.time()
+            # print(f'record video: send time: {after_send_time - after_read_time}')
             # frame_show = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             #
             # img = Image.fromarray(frame_show)
@@ -416,7 +463,9 @@ class AudioChatClientGUI:
             try:
                 self.root.after(0, self.update_my_lbl, frame)
             except Exception as e:
-                print("here1", e)
+                print("here1",e)
+            update_self_time = time.time()
+            # print(f'record video: update self time: {update_self_time - after_send_time}')
             #print(
             #    f'video: read time: {after_read_time - before_read_time}, send time: {after_send_time - after_read_time}')
             # Mimic the delay of video encoding

@@ -109,8 +109,13 @@ class ChatServer:
         self.print_status()
 
         try:
+            # audio_after_put = time.time()
             while True:
+                # audio_before_receive = time.time()
+                # print(f'Audio interval time: {audio_before_receive - audio_after_put}')
                 audio_chunk = await websocket.recv()
+                # audio_after_receive = time.time()
+                # print(f'Audio receive time: {audio_after_receive - audio_before_receive}')
                 if isinstance(audio_chunk, bytes):
                     if websocket in self.muted_clients[room_name]:
                         # previously the client is muted, then unmute the client
@@ -127,6 +132,8 @@ class ChatServer:
                             self.audio_buffers[room_name][websocket].get_nowait()
                         #self.print_status()
                 await asyncio.sleep(0)
+                # audio_after_put = time.time()
+                # print(f'Audio put time: {audio_after_put - audio_after_receive}')
         except Exception as e:
             print(f"except{e}:Client disconnected from {room_name}.")
         finally:
@@ -154,15 +161,22 @@ class ChatServer:
 
         try:
             while websocket in self.rooms2[room_name]:
+                # video_before_receive = time.time()
                 message = await websocket.recv()
+                # video_after_receive = time.time()
+                # print(f'Video receive time: {video_after_receive - video_before_receive}')
                 if message[:5] != b'VIDEO':
                     print(f"Invalid message received: {message[:10]}")
+                # video_before_send_time = time.time()
+                # for socket in self.rooms2[room_name]:
                 for socket in self.rooms2[room_name].copy():
                     if socket != websocket:
                         try:
                             await socket.send(b'V' + client_name.encode('utf-8') + message[5:])
                         except Exception as e:
                             print(f"here333except{e}",client_name)
+                # video_after_send_time = time.time()
+                # print(f'Video send time: {video_after_send_time - video_before_send_time}')
         except Exception as e:
             print(f"handler2except{e}:Client disconnected from {room_name}.")
         finally:
@@ -258,7 +272,7 @@ class ChatServer:
 
                     # amplify the mixed data
                     mixed_chunk_byte = np.clip(mixed_chunk * self.amplification_factor, -32768, 32767).astype(np.int16).tobytes()
-
+                    # before_send = time.time()
                     for client in self.rooms[room_name]:
                         mixed_chunk_without_self = mixed_chunk
                         if client in audio_chunks.keys():
@@ -275,6 +289,8 @@ class ChatServer:
                         # else:
                         #     print(f'{time.time()}\tSend non-empty audio to Client: {client.remote_address}')
 
+                        # after_send = time.time()
+                        # print(f'Audio send time: {after_send - before_send}')
             except Exception as e:
                 print(f'error found: {e}', file=sys.stderr)
 
