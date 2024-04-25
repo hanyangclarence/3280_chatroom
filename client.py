@@ -14,6 +14,7 @@ import ReadWrite
 import os
 import math
 import aiofiles
+import zlib
 # import librosa
 
 
@@ -270,7 +271,7 @@ class AudioChatClientGUI:
         return y_shifted
 
     async def record_and_send(self, websocket):
-        # try:
+        try:
             last_chunk = np.zeros(self.chunk_size)
             last_shifted = np.zeros(self.chunk_size)
             while True:
@@ -319,8 +320,8 @@ class AudioChatClientGUI:
                     await websocket.send(mute_message)
                 # Give the control back
                 await asyncio.sleep(0)
-        # except websockets.exceptions.ConnectionClosedError as e:
-        #     print(f"Connection closed during record and send process: {e}")
+        except Exception as e:
+            print(f"Connection closed during record and send process: {e}")
 
     async def receive_and_play(self, websocket):
         try:
@@ -334,8 +335,9 @@ class AudioChatClientGUI:
                 if message[:4] == b'FILE':
                     file_path = os.path.join(os.getcwd(), "other's_recording_"+str(self.other_filename_count)+".wav")
                     async with aiofiles.open(file_path, "wb") as f:
-                    # async with open(os.path.join(os.getcwd(), "other's_recording_",str(self.filename_count),".wav"), "wb") as f:
-                        await f.write(message[4:])
+                        data = zlib.decompress(message[4:])
+                        await f.write(data)
+                        # await f.write(message[4:])
                         self.other_filename_count += 1
                     continue
                 # after_receive = time.time()
@@ -356,12 +358,13 @@ class AudioChatClientGUI:
                     await asyncio.sleep(0)
                 # after_play = time.time()
                 # print(f'receive: play time: {after_play - after_append}')
-        except websockets.exceptions.ConnectionClosedError as e:
+        except Exception as e:
             print(f"Connection closed during receive and play process: {e}")
 
     async def send_file(self):
         async with aiofiles.open(os.path.join(os.getcwd(), "last_recording_"+str(self.filename_count-1)+".wav"), "rb") as f:
             content = await f.read()
+            content = zlib.compress(content)
             await self.websocket.send(b"FILE"+content)
     def save_recording(self):
         if self.is_recording == True:

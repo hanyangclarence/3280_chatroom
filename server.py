@@ -119,7 +119,10 @@ class ChatServer:
                 if audio_chunk[:4] == b'FILE':
                     for client in self.rooms[room_name]:
                         if client != websocket:
-                            await client.send(audio_chunk)
+                            try:
+                                await client.send(audio_chunk)
+                            except Exception as e:
+                                print(f"here555except{e}", client)
                     continue
                 if isinstance(audio_chunk, bytes):
                     if websocket in self.muted_clients[room_name]:
