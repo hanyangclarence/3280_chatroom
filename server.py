@@ -189,13 +189,13 @@ class ChatServer:
         self.room_list.remove(room_name)
 
     def check_synchronization(self, room_name: str):
-        # print(f'Check synchronization in room: {room_name}')
+        print(f'Check synchronization in room: {room_name}')
         # check if any buffer stores too many audio chunks that cause synchronization issue
         buffer_sizes = [buffer.qsize() for buffer in self.audio_buffers[room_name].values()]
         tolerance_duration = 0.1  # 100 ms
         tolerance_n_chunk = int(tolerance_duration / self.chunk_duration)
         if max(buffer_sizes) - min(buffer_sizes) > tolerance_n_chunk:
-            # print(f"Not synchronized!!!!!!!, now all sync to {min(buffer_sizes)}")
+            print(f"Not synchronized!!!!!!!, now all sync to {min(buffer_sizes)}")
             # cut the audio chunks in the buffer to the min number of chunks
             min_buffer_size = min(buffer_sizes)
             for buffer in self.audio_buffers[room_name].values():
@@ -205,8 +205,8 @@ class ChatServer:
     async def mix_and_broadcast(self, room_name: str):
         while True:
             try:
-                # print(f'{time.time()}\tbefore: ', end='')
-                # self.print_status()
+                print(f'{time.time()}\tbefore: ', end='')
+                self.print_status()
 
                 # wait until all the buffers in the room exceed the max buffer size, except the muted clients
                 while True:
@@ -223,8 +223,8 @@ class ChatServer:
                             break
                     await asyncio.sleep(0.01)
 
-                # print(f'{time.time()}\tafter checking buffer size: ', end='')
-                # self.print_status()
+                print(f'{time.time()}\tafter checking buffer size: ', end='')
+                self.print_status()
 
                 # load self.max_buffer_size of audio chunks from the buffers, except the muted clients
                 audio_chunks: Dict[Socket, List[bytes]] = {}
@@ -232,8 +232,8 @@ class ChatServer:
                     if client not in self.muted_clients[room_name]:
                         audio_chunks[client] = [buffer.get_nowait() for _ in range(self.max_buffer_size)]
 
-                # print(f'{time.time()}\tafter readout: ', end='')
-                # self.print_status()
+                print(f'{time.time()}\tafter readout: ', end='')
+                self.print_status()
 
                 if len(audio_chunks) == 0:
                     # everyone is muted, no need to mix audio
@@ -251,7 +251,7 @@ class ChatServer:
                         audio_chunks[client] = np.frombuffer(audio_chunks[client], dtype=np.int16)
                         # convert to int32 to avoid overflow
                         audio_chunks[client] = audio_chunks[client].astype(np.int32)
-                        # print(f'!!!Client: {client.remote_address}, audio_chunks: {audio_chunks[client].shape}')
+                        print(f'!!!Client: {client.remote_address}, audio_chunks: {audio_chunks[client].shape}')
 
                     mixed_chunk = np.sum([audio_chunks[client] for client in audio_chunks.keys()], axis=0)
                     # print(f'!!!Mixed chunk with self: {mixed_chunk.shape}, {np.sum(mixed_chunk)}')
@@ -270,10 +270,10 @@ class ChatServer:
 
                         await client.send(mixed_chunk_byte + mixed_chunk_without_self_byte)
 
-                        # if np.sum(mixed_chunk_without_self) == 0:
-                        #     print(f'{time.time()}\tSend empty audio to Client: {client.remote_address}')
-                        # else:
-                        #     print(f'{time.time()}\tSend non-empty audio to Client: {client.remote_address}')
+                        if np.sum(mixed_chunk_without_self) == 0:
+                            print(f'{time.time()}\tSend empty audio to Client: {client.remote_address}')
+                        else:
+                            print(f'{time.time()}\tSend non-empty audio to Client: {client.remote_address}')
 
             except Exception as e:
                 print(f'error found: {e}', file=sys.stderr)
